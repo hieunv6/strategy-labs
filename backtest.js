@@ -5,9 +5,9 @@
 const BT = { trades: [], loading: false, mode: 'single' };
 
 const C = {
-  green:'#00d4a0', red:'#ff4d6a',
+  green:'#00f5a0', red:'#ff3f60',
   grid:'rgba(255,255,255,0.04)',
-  text:'#e8ecf4', textDim:'#8a90a4', textMuted:'#4a5068',
+  text:'#ffffff', textDim:'#a4a9be', textMuted:'#62677b',
 };
 
 const PATTERN_NAMES = {
@@ -154,68 +154,145 @@ function closeDropdown() {
   SS.active = -1;
 }
 
+function getIntervalMs(interval) {
+  const map = {
+    "1m": 60000,
+    "3m": 180000,
+    "5m": 300000,
+    "15m": 900000,
+    "30m": 1800000,
+    "1h": 3600000,
+    "2h": 7200000,
+    "4h": 14400000,
+    "6h": 21600000,
+    "8h": 28800000,
+    "12h": 57600000,
+    "1d": 86400000,
+    "3d": 259200000,
+    "1w": 604800000,
+    "1M": 2592000000
+  };
+  return map[interval] || 14400000;
+}
+
 // ============================================
 // AUTO-DOWNLOAD (SSE)
 // ============================================
 let _dlController = null;
+let _dlQueueCancelled = false;
+let _dlActiveReject = null;
+
+async function autoDownloadSymbols(symbols, interval) {
+  _dlQueueCancelled = false;
+  _dlActiveReject = null;
+  const overlay  = document.getElementById('dlOverlay');
+  const titleEl  = document.getElementById('dlTitle');
+  const subEl    = document.getElementById('dlSub');
+  const barEl    = document.getElementById('dlProgressBar');
+  const statsEl  = document.getElementById('dlStats');
+
+  overlay.classList.add('active');
+
+  for (let i = 0; i < symbols.length; i++) {
+    if (_dlQueueCancelled) break;
+    const symbol = symbols[i];
+    const displaySymbol = symbol.replace('USDT', '/USDT');
+    
+    titleEl.textContent = `Tải dữ liệu ${displaySymbol} (${i + 1}/${symbols.length})`;
+    subEl.textContent   = `Đang kết nối Binance API...`;
+    barEl.style.width   = '0%';
+    statsEl.textContent = '0 nến';
+
+    try {
+      await new Promise((resolve, reject) => {
+        _dlActiveReject = reject;
+        const url = `${LOCAL_API}/download?symbol=${symbol}&interval=${interval}`;
+        const es  = new EventSource(url);
+        _dlController = es;
+
+        es.onmessage = e => {
+          if (_dlQueueCancelled) {
+            es.close();
+            _dlController = null;
+            _dlActiveReject = null;
+            reject(new Error('Cancelled'));
+            return;
+          }
+          const d = JSON.parse(e.data);
+          if (d.type === 'start') {
+            subEl.textContent = `${d.mode} · ước tính ${d.estBatches} batch`;
+            barEl.style.width = '5%';
+          } else if (d.type === 'progress') {
+            barEl.style.width = d.pct + '%';
+            subEl.textContent = `Batch ${d.batch}/${d.total} · ${d.pct}%`;
+            statsEl.textContent = `${d.candles.toLocaleString()} nến`;
+          } else if (d.type === 'done') {
+            barEl.style.width = '100%';
+            statsEl.textContent = d.msg;
+            subEl.textContent = 'Hoàn thành!';
+            SS.dbSet.add(symbol);
+            es.close();
+            _dlController = null;
+            _dlActiveReject = null;
+            resolve(d.candles);
+          } else if (d.type === 'error') {
+            es.close();
+            _dlController = null;
+            _dlActiveReject = null;
+            reject(new Error(d.msg));
+          }
+        };
+        
+        es.onerror = () => {
+          es.close();
+          _dlController = null;
+          _dlActiveReject = null;
+          reject(new Error('Mất kết nối server'));
+        };
+      });
+      
+      // Subtle pause between downloads to let database breathe
+      if (i < symbols.length - 1) {
+        await new Promise(r => setTimeout(r, 450));
+      }
+    } catch (err) {
+      if (err.message === 'Cancelled') {
+        break;
+      }
+      console.error(`Lỗi tải dữ liệu cho ${symbol}:`, err);
+      showToast(`⚠️ Không thể tải ${displaySymbol}: ${err.message || err}`);
+      if (symbols.length === 1) {
+        overlay.classList.remove('active');
+        throw err;
+      }
+      // Portfolio mode: continue to the next coin
+    }
+  }
+
+  overlay.classList.remove('active');
+  _dlController = null;
+  _dlActiveReject = null;
+  if (_dlQueueCancelled) {
+    throw new Error('Đã hủy tải dữ liệu');
+  }
+}
 
 async function autoDownloadSymbol(symbol, interval) {
-  return new Promise((resolve, reject) => {
-    const overlay  = document.getElementById('dlOverlay');
-    const titleEl  = document.getElementById('dlTitle');
-    const subEl    = document.getElementById('dlSub');
-    const barEl    = document.getElementById('dlProgressBar');
-    const statsEl  = document.getElementById('dlStats');
-
-    titleEl.textContent = `Tải dữ liệu ${symbol.replace('USDT','/USDT')}`;
-    subEl.textContent   = `Kết nối Binance API...`;
-    barEl.style.width   = '2%';
-    statsEl.textContent = '0 nến';
-    overlay.classList.add('active');
-
-    const url = `${LOCAL_API}/download?symbol=${symbol}&interval=${interval}`;
-    const es  = new EventSource(url);
-    _dlController = es;
-
-    es.onmessage = e => {
-      const d = JSON.parse(e.data);
-      if (d.type === 'start') {
-        subEl.textContent = `${d.mode} · ước tính ${d.estBatches} batch`;
-        barEl.style.width = '5%';
-      } else if (d.type === 'progress') {
-        barEl.style.width = d.pct + '%';
-        subEl.textContent = `Batch ${d.batch}/${d.total} · ${d.pct}%`;
-        statsEl.textContent = `${d.candles.toLocaleString()} nến`;
-      } else if (d.type === 'done') {
-        barEl.style.width = '100%';
-        statsEl.textContent = d.msg;
-        subEl.textContent = '';
-        SS.dbSet.add(symbol);
-        setTimeout(() => {
-          overlay.classList.remove('active');
-          es.close(); _dlController = null;
-          resolve(d.candles);
-        }, 800);
-      } else if (d.type === 'error') {
-        overlay.classList.remove('active');
-        es.close(); _dlController = null;
-        reject(new Error(d.msg));
-      }
-    };
-    es.onerror = () => {
-      overlay.classList.remove('active');
-      es.close(); _dlController = null;
-      reject(new Error('Mất kết nối server'));
-    };
-  });
+  return autoDownloadSymbols([symbol], interval);
 }
 
 function cancelDownload() {
+  _dlQueueCancelled = true;
   if (_dlController) { _dlController.close(); _dlController = null; }
   document.getElementById('dlOverlay').classList.remove('active');
   BT.loading = false;
   document.getElementById('btnRun').disabled = false;
   document.getElementById('btnRunText').textContent = '▶ Chạy Backtest';
+  
+  if (_dlActiveReject) {
+    _dlActiveReject(new Error('Cancelled'));
+    _dlActiveReject = null;
+  }
 }
 
 // ============================================
@@ -248,20 +325,17 @@ async function fetchMeta() {
   return await res.json();
 }
 
-function rangeToMs(range) {
-  const n = parseInt(range), u = range.slice(-1), D = 86_400_000;
-  return u === 'm' ? n * 30 * D : n * 365 * D;
-}
 
-async function loadCandles(symbol, interval, startTimeMs, onProgress) {
-  const endTimeMs = Date.now();
+
+async function loadCandles(symbol, interval, startTimeMs, endTimeMs, onProgress) {
+  const end = endTimeMs || Date.now();
   try {
-    return await fetchFromLocalDB(symbol, interval, startTimeMs, endTimeMs, onProgress);
+    return await fetchFromLocalDB(symbol, interval, startTimeMs, end, onProgress);
   } catch(e) {
     if (e.code === 'NO_DATA') {
       onProgress?.(-1, 0, `⬇ Chưa có dữ liệu — đang tải từ Binance...`);
-      await autoDownloadSymbol(symbol, interval);
-      return await fetchFromLocalDB(symbol, interval, startTimeMs, endTimeMs, onProgress);
+      await autoDownloadSymbols([symbol], interval);
+      return await fetchFromLocalDB(symbol, interval, startTimeMs, end, onProgress);
     }
     throw e;
   }
@@ -360,9 +434,39 @@ function detectPattern(candles, idx, crossType) {
 }
 
 // ============================================
-// SIMULATE TRADE (Fixed % hoặc ATR SL)
+// UI SYNC FOR SIZING MODELS
 // ============================================
-function simulateTrade(candles, sigIdx, crossType, slMode, slValue, atrArr, rrRatio, capital) {
+function onSizeTypeChange() {
+  const type = document.getElementById('btSizeType').value;
+  const lbl = document.getElementById('lblSizeValue');
+  const valInput = document.getElementById('btSizeValue');
+  if (!lbl || !valInput) return;
+
+  if (type === 'risk') {
+    lbl.textContent = 'Rủi ro %';
+    valInput.value = '2';
+    valInput.min = '0.01';
+    valInput.max = '100';
+    valInput.step = '0.1';
+  } else if (type === 'percent') {
+    lbl.textContent = '% Vốn/lệnh';
+    valInput.value = '10';
+    valInput.min = '0.1';
+    valInput.max = '100';
+    valInput.step = '1';
+  } else if (type === 'fixed') {
+    lbl.textContent = 'Số USD';
+    valInput.value = '1000';
+    valInput.min = '1';
+    valInput.removeAttribute('max');
+    valInput.step = '100';
+  }
+}
+
+// ============================================
+// SIMULATE TRADE (With Position Sizing Models)
+// ============================================
+function simulateTrade(candles, sigIdx, crossType, slMode, slValue, atrArr, rrRatio, capital, sizeType, sizeValue) {
   const entry = candles[sigIdx]?.close; if (!entry) return null;
   const isBuy = crossType === 'bull';
 
@@ -377,8 +481,22 @@ function simulateTrade(candles, sigIdx, crossType, slMode, slValue, atrArr, rrRa
 
   const sl       = isBuy ? entry - slDist : entry + slDist;
   const tp       = isBuy ? entry + slDist * rrRatio : entry - slDist * rrRatio;
-  const posSize  = (capital * 0.02) / slDist;
-  const posValue = posSize * entry;
+  
+  let posSize = 0;
+  if (sizeType === 'percent') {
+    posSize = (capital * (sizeValue / 100)) / entry;
+  } else if (sizeType === 'fixed') {
+    posSize = sizeValue / entry;
+  } else { // default is 'risk'
+    posSize = (capital * (sizeValue / 100)) / slDist;
+  }
+
+  // Cap posValue to current capital for spot trading safety
+  let posValue = posSize * entry;
+  if (posValue > capital && capital > 0) {
+    posValue = capital;
+    posSize = capital / entry;
+  }
 
   for (let i = sigIdx + 1; i < Math.min(sigIdx + 80, candles.length); i++) {
     const c = candles[i];
@@ -393,7 +511,7 @@ function simulateTrade(candles, sigIdx, crossType, slMode, slValue, atrArr, rrRa
         entryTime: candles[sigIdx].time, exitTime: c.time,
         type: isBuy ? 'BUY' : 'SELL', entry, sl, tp, exitPrice: exitPx,
         result, pnl: +pnl.toFixed(2), pnlPct: +((pnl/posValue)*100).toFixed(2),
-        holdBars, slDist, slMode,
+        holdBars, slDist, slMode, posSize, posValue,
       };
     }
   }
@@ -404,7 +522,7 @@ function simulateTrade(candles, sigIdx, crossType, slMode, slValue, atrArr, rrRa
     entryTime: candles[sigIdx].time, exitTime: last.time,
     type: isBuy ? 'BUY' : 'SELL', entry, sl, tp, exitPrice: last.close,
     result: pnl >= 0 ? 'WIN' : 'LOSS', pnl: +pnl.toFixed(2), pnlPct: +((pnl/posValue)*100).toFixed(2),
-    holdBars, slDist, slMode,
+    holdBars, slDist, slMode, posSize, posValue,
   };
 }
 
@@ -412,7 +530,7 @@ function simulateTrade(candles, sigIdx, crossType, slMode, slValue, atrArr, rrRa
 // RUN SINGLE SYMBOL
 // ============================================
 function runSymbolBacktest(candles, params) {
-  const { slMode, slValue, atrPeriod, rrRatio, capital } = params;
+  const { slMode, slValue, atrPeriod, rrRatio, capital, sizeType, sizeValue, pattern: filterPattern } = params;
   const ema20  = calcEMA(candles, 20);
   const ema50  = calcEMA(candles, 50);
   const atrArr = slMode === 'atr' ? calcATR(candles, atrPeriod) : null;
@@ -425,8 +543,9 @@ function runSymbolBacktest(candles, params) {
     if (!rt) return;
     const pattern = detectPattern(candles, rt.index, cx.type);
     if (!pattern) return;
+    if (filterPattern && filterPattern !== 'all' && pattern !== filterPattern) return;
     const sigIdx  = Math.min(rt.index + 1, candles.length - 1);
-    const trade   = simulateTrade(candles, sigIdx, cx.type, slMode, slValue, atrArr, rrRatio, cap);
+    const trade   = simulateTrade(candles, sigIdx, cx.type, slMode, slValue, atrArr, rrRatio, cap, sizeType, sizeValue);
     if (!trade) return;
     trade.pattern = pattern;
     trades.push(trade);
@@ -436,9 +555,9 @@ function runSymbolBacktest(candles, params) {
 }
 
 // ============================================
-// METRICS (extended)
+// METRICS (extended with CAGR)
 // ============================================
-function calcMetrics(trades, capital) {
+function calcMetrics(trades, capital, startTimeMs, endTimeMs) {
   if (!trades.length) return null;
   const wins    = trades.filter(t => t.result === 'WIN');
   const losses  = trades.filter(t => t.result === 'LOSS');
@@ -476,6 +595,29 @@ function calcMetrics(trades, capital) {
 
   const recoveryFactor = maxDD > 0 ? +(totalPnL / (capital * maxDD / 100)).toFixed(2) : '∞';
 
+  // Calculate CAGR
+  let durationYears = 1;
+  if (startTimeMs && endTimeMs) {
+    durationYears = (endTimeMs - startTimeMs) / (365.25 * 24 * 60 * 60 * 1000);
+  } else {
+    const times = trades.map(t => [t.entryTime, t.exitTime]).flat().filter(Boolean);
+    if (times.length >= 2) {
+      const minTime = Math.min(...times);
+      const maxTime = Math.max(...times);
+      durationYears = (maxTime - minTime) / (365.25 * 24 * 60 * 60 * 1000);
+    }
+  }
+  if (durationYears <= 0) durationYears = 1;
+
+  let cagr = 0;
+  if (capital > 0) {
+    if (equity <= 0) {
+      cagr = -100;
+    } else if (durationYears > 0.005) {
+      cagr = (Math.pow(equity / capital, 1 / durationYears) - 1) * 100;
+    }
+  }
+
   return {
     total: trades.length, wins: wins.length, losses: losses.length,
     winRate: wins.length / trades.length * 100,
@@ -487,6 +629,7 @@ function calcMetrics(trades, capital) {
     equityCurve: curve, avgHold: +avgHold.toFixed(1),
     sharpe, sortino, recoveryFactor,
     expectancy: +expectancy.toFixed(2), monthly,
+    cagr,
   };
 }
 
@@ -561,7 +704,7 @@ function renderEquityCurve(curve, trades) {
   ctx.lineTo(PAD.left, PAD.top + cH); ctx.closePath();
   const isPos = curve[curve.length - 1] >= curve[0];
   const grd = ctx.createLinearGradient(0, PAD.top, 0, PAD.top + cH);
-  grd.addColorStop(0, isPos ? 'rgba(0,212,160,0.18)' : 'rgba(255,77,106,0.18)');
+  grd.addColorStop(0, isPos ? 'rgba(0, 245, 160, 0.18)' : 'rgba(255, 63, 96, 0.18)');
   grd.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = grd; ctx.fill();
 
@@ -626,7 +769,7 @@ function renderMonthlyHeatmap(monthly) {
       yearPnl    += d.pnl;
       yearTrades += d.total;
       const alpha  = maxAbs > 0 ? Math.min(0.85, Math.abs(d.pnl) / maxAbs * 0.85 + 0.05) : 0.1;
-      const bg     = d.pnl >= 0 ? `rgba(0,212,160,${alpha})` : `rgba(255,77,106,${alpha})`;
+      const bg     = d.pnl >= 0 ? `rgba(0, 245, 160, ${alpha})` : `rgba(255, 63, 96, ${alpha})`;
       const sgn    = d.pnl >= 0 ? '+' : '';
       const tip    = `${d.total} lệnh · WR ${d.wr.toFixed(0)}% · ${sgn}$${Math.abs(d.pnl).toFixed(0)}`;
       return `<div class="hm-cell" style="background:${bg}" title="${tip}">
@@ -636,7 +779,7 @@ function renderMonthlyHeatmap(monthly) {
     });
 
     const ysgn   = yearPnl >= 0 ? '+' : '';
-    const ybg    = yearPnl >= 0 ? 'rgba(0,212,160,0.15)' : 'rgba(255,77,106,0.15)';
+    const ybg    = yearPnl >= 0 ? 'rgba(0, 245, 160, 0.12)' : 'rgba(255, 63, 96, 0.12)';
     const ycol   = yearPnl >= 0 ? 'var(--green)' : 'var(--red)';
     html += `<div class="heatmap-row">
       <div class="hm-year-col">${yr}</div>
@@ -745,6 +888,10 @@ function renderSymbolBreakdown(perSymbol) {
 // ============================================
 function renderTradeTable(trades) {
   const tbody = document.getElementById('tradeTableBody'); tbody.innerHTML = '';
+  const showSymbol = trades.some(t => t.symbol);
+  const symbolHeaders = document.querySelectorAll('.col-symbol');
+  symbolHeaders.forEach(el => el.style.display = showSymbol ? 'table-cell' : 'none');
+
   trades.forEach((t,i) => {
     const row = document.createElement('tr');
     row.className = `trade-row ${t.result==='WIN'?'row-win':'row-loss'}`;
@@ -757,9 +904,10 @@ function renderTradeTable(trades) {
     const slTag = t.slMode === 'atr' ? `ATR×${(t.slDist/1).toFixed?.(0)}` : `${(t.slDist/t.entry*100).toFixed(1)}%`;
     row.innerHTML = `
       <td style="color:var(--text-muted)">${i+1}</td>
-      ${t.symbol ? `<td style="color:var(--accent);font-weight:600">${t.symbol.replace('USDT','')}</td>` : ''}
+      ${t.symbol ? `<td class="col-symbol" style="color:var(--accent);font-weight:600;display:${showSymbol?'table-cell':'none'}">${t.symbol.replace('USDT','')}</td>` : ''}
       <td>${ds}</td>
       <td><span class="badge ${isBuy?'badge-buy':'badge-sell'}">${t.type}</span></td>
+      <td style="font-family:var(--font-mono)">$${Math.round(t.posValue || 0).toLocaleString()}</td>
       <td style="color:var(--text-dim)">${PATTERN_NAMES[t.pattern]||'—'}</td>
       <td>${fmtP(t.entry)}</td><td style="color:var(--red)">${fmtP(t.sl)}</td>
       <td style="color:var(--green)">${fmtP(t.tp)}</td><td>${fmtP(t.exitPrice)}</td>
@@ -842,7 +990,7 @@ async function refreshDataManager() {
 // ============================================
 // PORTFOLIO MODE — toggle UI
 // ============================================
-const PORTFOLIO_COINS = ['BTCUSDT','ETHUSDT','BNBUSDT','SOLUSDT','XRPUSDT','ADAUSDT','DOGEUSDT','AVAXUSDT','LINKUSDT','DOTUSDT'];
+let PORTFOLIO_COINS = [];
 
 function toggleMode(mode) {
   BT.mode = mode;
@@ -852,15 +1000,73 @@ function toggleMode(mode) {
   document.getElementById('portfolioCoinsWrap').style.display  = mode === 'portfolio' ? 'flex' : 'none';
 }
 
-function initPortfolioChips() {
+async function initPortfolioChips() {
   const wrap = document.getElementById('portfolioChips');
   if (!wrap) return;
-  wrap.innerHTML = PORTFOLIO_COINS.map(sym => {
-    const base = sym.replace('USDT', '');
-    const checked = ['BTCUSDT','ETHUSDT','BNBUSDT'].includes(sym);
-    return `<label class="chip-label ${checked ? 'selected' : ''}" id="chip-${sym}">
+  
+  wrap.innerHTML = `<div class="loading-chips">⌛ Đang tải danh sách Top 100 coin...</div>`;
+  
+  try {
+    const res = await fetch('/api/top100');
+    if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+    const data = await res.json();
+    PORTFOLIO_COINS = data.coins || [];
+    renderPortfolioChips();
+    updateSelectedCountBadge();
+  } catch (e) {
+    console.error("Failed to load top 100 portfolio coins:", e);
+    // Fallback if API fails
+    PORTFOLIO_COINS = [
+      { symbol: 'BTCUSDT', base: 'BTC', price: 0, change: 0, name: 'Bitcoin' },
+      { symbol: 'ETHUSDT', base: 'ETH', price: 0, change: 0, name: 'Ethereum' },
+      { symbol: 'BNBUSDT', base: 'BNB', price: 0, change: 0, name: 'BNB' },
+      { symbol: 'SOLUSDT', base: 'SOL', price: 0, change: 0, name: 'Solana' },
+      { symbol: 'XRPUSDT', base: 'XRP', price: 0, change: 0, name: 'Ripple' },
+      { symbol: 'ADAUSDT', base: 'ADA', price: 0, change: 0, name: 'Cardano' },
+      { symbol: 'DOGEUSDT', base: 'DOGE', price: 0, change: 0, name: 'Dogecoin' },
+      { symbol: 'AVAXUSDT', base: 'AVAX', price: 0, change: 0, name: 'Avalanche' },
+      { symbol: 'LINKUSDT', base: 'LINK', price: 0, change: 0, name: 'Chainlink' },
+      { symbol: 'DOTUSDT', base: 'DOT', price: 0, change: 0, name: 'Polkadot' }
+    ];
+    renderPortfolioChips();
+    updateSelectedCountBadge();
+  }
+}
+
+function renderPortfolioChips() {
+  const wrap = document.getElementById('portfolioChips');
+  if (!wrap) return;
+  
+  const defaultChecked = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT'];
+  
+  wrap.innerHTML = PORTFOLIO_COINS.map(coin => {
+    const sym = coin.symbol;
+    const base = coin.base;
+    const checked = defaultChecked.includes(sym);
+    
+    let changeClass = '';
+    let changeText = '';
+    if (coin.change !== undefined && coin.change !== 0) {
+      const sign = coin.change > 0 ? '+' : '';
+      changeClass = coin.change > 0 ? 'up' : 'down';
+      changeText = `<span class="chip-change ${changeClass}">${sign}${coin.change.toFixed(1)}%</span>`;
+    }
+    
+    let titleAttr = `${coin.name || base}`;
+    if (coin.price) {
+      titleAttr += `\nGiá: $${coin.price.toLocaleString()}`;
+    }
+    if (coin.volume) {
+      titleAttr += `\nVol 24h: $${coin.volume.toLocaleString()}`;
+    }
+    if (coin.market_cap) {
+      titleAttr += `\nCap: $${coin.market_cap.toLocaleString()}`;
+    }
+    
+    return `<label class="chip-label ${checked ? 'selected' : ''}" id="chip-${sym}" title="${titleAttr}">
       <input type="checkbox" value="${sym}" ${checked ? 'checked' : ''} onchange="toggleChip('${sym}', this)">
-      ${base}
+      <span>${base}</span>
+      ${changeText}
     </label>`;
   }).join('');
 }
@@ -868,6 +1074,50 @@ function initPortfolioChips() {
 function toggleChip(sym, input) {
   const chip = document.getElementById(`chip-${sym}`);
   if (chip) chip.classList.toggle('selected', input.checked);
+  updateSelectedCountBadge();
+}
+
+function updateSelectedCountBadge() {
+  const badge = document.getElementById('selectedCount');
+  if (!badge) return;
+  const count = getSelectedPortfolioSymbols().length;
+  badge.textContent = `Đã chọn: ${count}`;
+}
+
+function filterPortfolioChips() {
+  const query = document.getElementById('portfolioSearch').value.toUpperCase().trim();
+  const chips = document.querySelectorAll('#portfolioChips .chip-label');
+  
+  chips.forEach(chip => {
+    const symbolInput = chip.querySelector('input');
+    if (!symbolInput) return;
+    const sym = symbolInput.value;
+    const base = sym.replace('USDT', '');
+    
+    const matches = base.includes(query) || sym.includes(query);
+    chip.style.display = matches ? 'inline-flex' : 'none';
+  });
+}
+
+function selectTopCoins(count) {
+  const inputs = document.querySelectorAll('#portfolioChips input[type=checkbox]');
+  inputs.forEach((input, index) => {
+    const isSelected = index < count;
+    input.checked = isSelected;
+    const chip = document.getElementById(`chip-${input.value}`);
+    if (chip) chip.classList.toggle('selected', isSelected);
+  });
+  updateSelectedCountBadge();
+}
+
+function deselectAllCoins() {
+  const inputs = document.querySelectorAll('#portfolioChips input[type=checkbox]');
+  inputs.forEach(input => {
+    input.checked = false;
+    const chip = document.getElementById(`chip-${input.value}`);
+    if (chip) chip.classList.remove('selected');
+  });
+  updateSelectedCountBadge();
 }
 
 function getSelectedPortfolioSymbols() {
@@ -904,6 +1154,23 @@ function renderStats(m, capital) {
   set('statDD', `-${m.maxDrawdown.toFixed(1)}%`);
   set('statAvgWin', `+$${m.avgWin.toFixed(2)}`);
   set('statAvgLoss', `-$${m.avgLoss.toFixed(2)}`);
+  
+  // CAGR
+  const cagrVal = m.cagr !== undefined ? `${m.cagr >= 0 ? '+' : ''}${m.cagr.toFixed(1)}%` : '—';
+  set('statCAGR', cagrVal);
+  const cagrCard = document.getElementById('statCAGRCard');
+  if (cagrCard) {
+    if (m.cagr >= 0) {
+      cagrCard.classList.add('highlight-green');
+      cagrCard.classList.remove('highlight-red');
+      document.getElementById('statCAGR').style.color = 'var(--green)';
+    } else {
+      cagrCard.classList.add('highlight-red');
+      cagrCard.classList.remove('highlight-green');
+      document.getElementById('statCAGR').style.color = 'var(--red)';
+    }
+  }
+
   // Extended
   set('statSharpe', m.sharpe, v => parseFloat(v) >= 1 ? 'var(--green)' : parseFloat(v) < 0 ? 'var(--red)' : 'var(--text)');
   set('statSortino', m.sortino, v => parseFloat(v) >= 1.5 ? 'var(--green)' : parseFloat(v) < 0 ? 'var(--red)' : 'var(--text)');
@@ -922,10 +1189,25 @@ async function runBacktest() {
   BT.loading = true;
 
   const interval = document.getElementById('btInterval').value;
-  const range    = document.getElementById('btRange').value;
+  const startDateStr = document.getElementById('btStartDate').value;
+  const endDateStr = document.getElementById('btEndDate').value;
   const rrRatio  = parseFloat(document.getElementById('btRR').value);
   const capital  = parseFloat(document.getElementById('btCapital').value);
-  const startTimeMs = Date.now() - rangeToMs(range);
+
+  if (!startDateStr || !endDateStr) {
+    showToast('⚠️ Vui lòng chọn đầy đủ từ ngày và đến ngày');
+    BT.loading = false;
+    return;
+  }
+
+  const startTimeMs = new Date(startDateStr).getTime();
+  const endTimeMs = new Date(endDateStr).getTime() + 86_399_999; // Đến cuối ngày kết thúc
+
+  if (startTimeMs >= endTimeMs) {
+    showToast('⚠️ Ngày bắt đầu phải trước ngày kết thúc');
+    BT.loading = false;
+    return;
+  }
 
   // SL params
   const slMode  = document.getElementById('slModeATR').classList.contains('active') ? 'atr' : 'fixed';
@@ -934,7 +1216,69 @@ async function runBacktest() {
     : parseFloat(document.getElementById('btSL').value);
   const atrPeriod = parseInt(document.getElementById('atrPeriod')?.value || 14);
 
-  const params = { slMode, slValue, atrPeriod, rrRatio, capital };
+  // Sizing params
+  const sizeType = document.getElementById('btSizeType').value;
+  const sizeValue = parseFloat(document.getElementById('btSizeValue').value);
+
+  // Candlestick Pattern params
+  const selectedPattern = document.getElementById('btPattern')?.value || 'all';
+
+  const params = { slMode, slValue, atrPeriod, rrRatio, capital, sizeType, sizeValue, pattern: selectedPattern };
+
+  // Determine list of symbols to test
+  let symbolsToTest = [];
+  if (BT.mode === 'portfolio') {
+    symbolsToTest = getSelectedPortfolioSymbols();
+    if (symbolsToTest.length < 1) {
+      showToast('⚠️ Chọn ít nhất 1 coin trong danh mục');
+      BT.loading = false;
+      return;
+    }
+  } else {
+    const symbol = document.getElementById('btSymbol').value.toUpperCase().trim();
+    if (!symbol) {
+      showToast('⚠️ Vui lòng nhập coin cần backtest');
+      BT.loading = false;
+      return;
+    }
+    symbolsToTest = [symbol];
+  }
+
+  // Pre-check for missing or outdated local data
+  showToast('⏳ Đang kiểm tra dữ liệu local...');
+  let missingSymbols = [];
+  try {
+    const metaList = await fetchMeta();
+    const intervalMs = getIntervalMs(interval);
+    const nowMs = Date.now();
+    const targetEndMs = Math.min(endTimeMs, nowMs);
+
+    missingSymbols = symbolsToTest.filter(sym => {
+      const m = metaList.find(x => x.symbol === sym && x.interval === interval);
+      if (!m || m.count === 0) return true; // Completely missing
+      
+      // Outdated if lastTime in DB is older than targetEndMs (allowing 2 intervals of latency)
+      const isOutdated = m.lastTime < (targetEndMs - 2 * intervalMs);
+      return isOutdated;
+    });
+  } catch (e) {
+    console.error("Lỗi khi kiểm tra dữ liệu local:", e);
+    missingSymbols = [...symbolsToTest]; // Safe fallback: assume all need check
+  }
+
+  // Auto-download all missing data sequentially
+  if (missingSymbols.length > 0) {
+    showToast(`⬇️ Phát hiện ${missingSymbols.length} coin thiếu/cũ dữ liệu. Đang tự động tải...`);
+    try {
+      await autoDownloadSymbols(missingSymbols, interval);
+      showToast('✅ Tải dữ liệu thành công!');
+    } catch (err) {
+      console.error("Lỗi khi tải dữ liệu:", err);
+      showToast(`❌ Không thể tải dữ liệu: ${err.message || err}`);
+      BT.loading = false;
+      return;
+    }
+  }
 
   setLoading(true);
 
@@ -954,16 +1298,27 @@ async function runBacktest() {
         const sym = symbols[i];
         setProgress(Math.round(i / symbols.length * 80), `⏳ ${sym.replace('USDT','/USDT')} (${i+1}/${symbols.length})`);
 
-        const candles = await loadCandles(sym, interval, startTimeMs,
-          (pct, cnt, label) => {
-            if (pct === -1) setProgress(Math.round(i/symbols.length*80), label);
-          });
+        try {
+          const candles = await loadCandles(sym, interval, startTimeMs, endTimeMs,
+            (pct, cnt, label) => {
+              if (pct === -1) setProgress(Math.round(i/symbols.length*80), label);
+            });
 
-        const trades = runSymbolBacktest(candles, { ...params, capital: perCap });
-        trades.forEach(t => t.symbol = sym);
-        const symMetrics = calcMetrics(trades, perCap);
-        perSymbol[sym]   = { trades, candles: candles.length, metrics: symMetrics };
-        allTrades.push(...trades);
+          if (!candles || candles.length < 10) {
+            console.warn(`Bỏ qua ${sym}: Không đủ dữ liệu (${candles ? candles.length : 0} nến)`);
+            showToast(`⚠️ ${sym.replace('USDT','/USDT')} không đủ dữ liệu. Bỏ qua.`);
+            continue;
+          }
+
+          const trades = runSymbolBacktest(candles, { ...params, capital: perCap });
+          trades.forEach(t => t.symbol = sym);
+          const symMetrics = calcMetrics(trades, perCap, startTimeMs, endTimeMs);
+          perSymbol[sym]   = { trades, candles: candles.length, metrics: symMetrics };
+          allTrades.push(...trades);
+        } catch (err) {
+          console.error(`Lỗi xử lý backtest cho ${sym}:`, err);
+          showToast(`⚠️ Không thể xử lý ${sym.replace('USDT','/USDT')}. Bỏ qua.`);
+        }
       }
 
       allTrades.sort((a, b) => a.entryTime - b.entryTime);
@@ -975,19 +1330,19 @@ async function runBacktest() {
       const symbol = document.getElementById('btSymbol').value.toUpperCase().trim();
       showToast(`⏳ Chuẩn bị ${symbol.replace('USDT','/USDT')} ${interval}...`);
 
-      const candles = await loadCandles(symbol, interval, startTimeMs,
+      const candles = await loadCandles(symbol, interval, startTimeMs, endTimeMs,
         (pct, count, label) => {
           if (pct === -1) { setProgress(0, label); return; }
           setProgress(pct, label || `${count.toLocaleString()} nến`);
         });
 
       if (candles.length < 100) {
-        showToast(`⚠️ Chỉ có ${candles.length} nến — không đủ dữ liệu`);
+        showToast('⚠️ Chỉ có ' + candles.length + ' nến — không đủ dữ liệu');
         setLoading(false); BT.loading = false; return;
       }
 
       allTrades = runSymbolBacktest(candles, params);
-      perSymbol[symbol] = { trades: allTrades, candles: candles.length, metrics: calcMetrics(allTrades, capital) };
+      perSymbol[symbol] = { trades: allTrades, candles: candles.length, metrics: calcMetrics(allTrades, capital, startTimeMs, endTimeMs) };
       setProgress(80, `✅ ${allTrades.length} tín hiệu`);
     }
 
@@ -1000,13 +1355,13 @@ async function runBacktest() {
     }
 
     // ── COMPUTE METRICS ─────────────────────────────
-    const m = calcMetrics(allTrades, capital);
+    const m = calcMetrics(allTrades, capital, startTimeMs, endTimeMs);
     const patternStats = calcPatternStats(allTrades);
 
     // ── UPDATE UI ───────────────────────────────────
     const hasSymbol = Object.keys(perSymbol).length > 0;
     document.getElementById('btCandleCount').textContent =
-      `${allTrades.length} lệnh · ${BT.mode === 'portfolio' ? Object.keys(perSymbol).length + ' coin' : Object.keys(perSymbol)[0]?.replace('USDT','/USDT')} · ${interval} · ${range}`;
+      `${allTrades.length} lệnh · ${BT.mode === 'portfolio' ? Object.keys(perSymbol).length + ' coin' : Object.keys(perSymbol)[0]?.replace('USDT','/USDT')} · ${interval} · ${startDateStr} → ${endDateStr}`;
 
     document.getElementById('statsBar').style.display = 'block';
     document.getElementById('btMain').style.display   = 'flex';
@@ -1064,7 +1419,11 @@ let _rt;
 window.addEventListener('resize', () => {
   clearTimeout(_rt); _rt = setTimeout(() => {
     if (!BT.trades.length) return;
-    const m = calcMetrics(BT.trades, parseFloat(document.getElementById('btCapital').value));
+    const startDateStr = document.getElementById('btStartDate').value;
+    const endDateStr = document.getElementById('btEndDate').value;
+    const startTimeMs = startDateStr ? new Date(startDateStr).getTime() : 0;
+    const endTimeMs = endDateStr ? new Date(endDateStr).getTime() + 86_399_999 : Date.now();
+    const m = calcMetrics(BT.trades, parseFloat(document.getElementById('btCapital').value), startTimeMs, endTimeMs);
     if (m) renderEquityCurve(m.equityCurve, BT.trades);
   }, 200);
 });
@@ -1073,6 +1432,21 @@ window.addEventListener('DOMContentLoaded', () => {
   initSymbolSearch();
   initPortfolioChips();
   refreshDataManager();
+  
+  // Set default start/end dates in local timezone
+  const formatDate = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const today = new Date();
+  const threeYearsAgo = new Date();
+  threeYearsAgo.setFullYear(today.getFullYear() - 3);
+  document.getElementById('btStartDate').value = formatDate(threeYearsAgo);
+  document.getElementById('btEndDate').value = formatDate(today);
+
   // Default SL mode = fixed
   toggleSLMode('fixed');
   toggleMode('single');
