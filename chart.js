@@ -14,18 +14,18 @@ const ctx = {
 
 // Color palette
 const C = {
-  bg: '#10121a',
-  bg3: '#161924',
-  border: 'rgba(255,255,255,0.07)',
-  text: '#e8ecf4',
-  textDim: '#8a90a4',
-  textMuted: '#4a5068',
-  ema20: '#f5c842',
-  ema50: '#4a9eff',
-  bull: '#00d4a0',
-  bear: '#ff4d6a',
-  green: '#00d4a0',
-  red: '#ff4d6a',
+  bg: '#05060b',
+  bg3: '#111322',
+  border: 'rgba(255,255,255,0.04)',
+  text: '#ffffff',
+  textDim: '#a4a9be',
+  textMuted: '#62677b',
+  ema20: '#ffd23f',
+  ema50: '#3b82f6',
+  bull: '#00f5a0',
+  bear: '#ff3f60',
+  green: '#00f5a0',
+  red: '#ff3f60',
   grid: 'rgba(255,255,255,0.04)',
 };
 
@@ -357,7 +357,7 @@ function renderChart(candles, ema20, ema50, crossover, retest, signal) {
     const visIdx = crossover.index - startIdx;
     const cx = toX(visIdx);
     const color = crossover.type === 'bull'
-      ? 'rgba(0,212,160,0.04)' : 'rgba(255,77,106,0.04)';
+      ? 'rgba(0, 245, 160, 0.04)' : 'rgba(255, 63, 96, 0.04)';
     c.fillStyle = color;
     c.fillRect(cx, PAD.top, W - PAD.right - cx, chartH);
 
@@ -381,7 +381,7 @@ function renderChart(candles, ema20, ema50, crossover, retest, signal) {
 
     // Highlight retest candle
     if (retest && globalIdx === retest.index) {
-      c.fillStyle = 'rgba(255,230,50,0.07)';
+      c.fillStyle = 'rgba(255, 210, 63, 0.08)';
       c.fillRect(x - candleW / 2 - 5, PAD.top, candleW + 10, chartH);
     }
 
@@ -536,7 +536,7 @@ function drawPatternPreview(patternKey) {
   const c = canvas.getContext('2d');
   const W = canvas.width, H = canvas.height;
   c.clearRect(0, 0, W, H);
-  c.fillStyle = '#161924';
+  c.fillStyle = C.bg3;
   c.fillRect(0, 0, W, H);
   const pattern = CANDLE_PATTERNS[patternKey];
   if (pattern) pattern.draw(c, W / 2, 8, W, H - 16);
@@ -716,7 +716,7 @@ function setupPatternCards() {
       const canvas = document.getElementById(`pc-${key}`);
       if (!canvas) return;
       const c = canvas.getContext('2d');
-      c.fillStyle = '#161924'; c.fillRect(0, 0, 100, 90);
+      c.fillStyle = C.bg3; c.fillRect(0, 0, 100, 90);
       pattern.draw(c, 50, 5, 100, 80);
     }, 60);
   });

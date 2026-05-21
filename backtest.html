@@ -71,18 +71,15 @@
         </select>
       </div>
 
+      <!-- Date Pickers -->
       <div class="setting-group">
-        <label class="setting-label">Khoảng Thời Gian</label>
-        <select id="btRange" class="ctrl-select">
-          <option value="1m">1 tháng</option>
-          <option value="3m">3 tháng</option>
-          <option value="6m">6 tháng</option>
-          <option value="1y">1 năm</option>
-          <option value="2y">2 năm</option>
-          <option value="3y" selected>3 năm</option>
-          <option value="5y">5 năm</option>
-          <option value="10y">10 năm</option>
-        </select>
+        <label class="setting-label">Từ ngày</label>
+        <input type="date" id="btStartDate" class="ctrl-input date-input" />
+      </div>
+
+      <div class="setting-group">
+        <label class="setting-label">Đến ngày</label>
+        <input type="date" id="btEndDate" class="ctrl-input date-input" />
       </div>
 
       <!-- SL Type -->
@@ -136,6 +133,34 @@
         </select>
       </div>
 
+      <div class="setting-group">
+        <label class="setting-label">Kiểu phân bổ</label>
+        <select id="btSizeType" class="ctrl-select" onchange="onSizeTypeChange()">
+          <option value="risk" selected>Rủi ro % SL</option>
+          <option value="percent">% Vốn/lệnh</option>
+          <option value="fixed">Số tiền cố định</option>
+        </select>
+      </div>
+
+      <div class="setting-group">
+        <label class="setting-label" id="lblSizeValue">Rủi ro %</label>
+        <input id="btSizeValue" class="ctrl-input" type="number" value="2" min="0.01" step="any" style="width:75px" />
+      </div>
+
+      <div class="setting-group">
+        <label class="setting-label">Mô hình nến</label>
+        <select id="btPattern" class="ctrl-select">
+          <option value="all" selected>Tất cả mô hình</option>
+          <option value="bullHammer">Hammer ↑</option>
+          <option value="hangingMan">Hanging Man</option>
+          <option value="bullEngulfing">Engulfing ↑</option>
+          <option value="bearEngulfing">Engulfing ↓</option>
+          <option value="pinBarBull">Pin Bar ↑</option>
+          <option value="dojiStar">Doji</option>
+          <option value="shootingStar">Shooting Star ↓</option>
+        </select>
+      </div>
+
       <button class="btn-run" id="btnRun" onclick="runBacktest()">
         <span id="btnRunText">▶ Chạy Backtest</span>
       </button>
@@ -145,8 +170,26 @@
 
     <!-- Portfolio coins -->
     <div id="portfolioCoinsWrap" class="portfolio-coins-bar" style="display:none">
-      <span class="portfolio-label">📊 Chọn coin:</span>
-      <div class="portfolio-chips" id="portfolioChips"></div>
+      <div class="portfolio-controls">
+        <div class="portfolio-info">
+          <span class="portfolio-label">📊 Top 100 Coin (Vốn hóa):</span>
+          <span class="portfolio-selected-count" id="selectedCount">Đã chọn: 3</span>
+        </div>
+        <div class="portfolio-actions">
+          <button type="button" class="portfolio-action-btn" onclick="selectTopCoins(10)">Top 10</button>
+          <button type="button" class="portfolio-action-btn" onclick="selectTopCoins(50)">Top 50</button>
+          <button type="button" class="portfolio-action-btn" onclick="selectTopCoins(100)">Top 100</button>
+          <button type="button" class="portfolio-action-btn warn" onclick="deselectAllCoins()">Bỏ chọn</button>
+        </div>
+        <div class="portfolio-search-wrap">
+          <input type="text" id="portfolioSearch" placeholder="Tìm coin (vd: SOL, ADA)..." onkeyup="filterPortfolioChips()">
+        </div>
+      </div>
+      <div class="portfolio-chips-scroll">
+        <div class="portfolio-chips" id="portfolioChips">
+          <div class="loading-chips">⌛ Đang tải danh sách Top 100 coin...</div>
+        </div>
+      </div>
     </div>
 
     <!-- Progress bar -->
@@ -197,6 +240,10 @@
     </div>
     <!-- Row 2: Extended metrics -->
     <div class="bt-stats-inner bt-stats-ext">
+      <div class="stat-card-sm highlight-green" id="statCAGRCard">
+        <div class="stat-label-sm">CAGR / Năm</div>
+        <div class="stat-val-sm" id="statCAGR">—</div>
+      </div>
       <div class="stat-card-sm">
         <div class="stat-label-sm">Sharpe Ratio</div>
         <div class="stat-val-sm" id="statSharpe">—</div>
@@ -313,6 +360,7 @@
               <th class="col-symbol" style="display:none">Symbol</th>
               <th>Thời Gian</th>
               <th>Loại</th>
+              <th>Volume ($)</th>
               <th>Pattern</th>
               <th>Entry</th>
               <th>SL</th>
