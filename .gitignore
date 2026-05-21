@@ -20,3 +20,6 @@ venv/
 .idea/
 *.swp
 *.swo
+
+# Server temporary files
+.server.pid

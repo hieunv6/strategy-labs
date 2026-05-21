@@ -175,6 +175,9 @@ class Handler(SimpleHTTPRequestHandler):
             if parsed.path == "/api/symbols":
                 self.api_symbols(params)
                 return
+            if parsed.path == "/api/top100":
+                self.api_top100(params)
+                return
 
             if not os.path.exists(DB_PATH):
                 self.json_error(503, "DB chưa có. Hãy chạy: python3 download.py")
@@ -256,6 +259,112 @@ class Handler(SimpleHTTPRequestHandler):
         except Exception as e:
             self.json_error(502, f"Không thể lấy danh sách từ Binance: {e}")
 
+    # ── /api/top100 ───────────────────────────────────────────────────
+    def api_top100(self, params):
+        """Trả về danh sách 100 coin có vốn hóa lớn nhất hỗ trợ USDT trên Binance"""
+        try:
+            with urlopen("https://api.binance.com/api/v3/ticker/24hr", timeout=10) as r:
+                tickers = json.load(r)
+            binance_map = {
+                t["symbol"]: {
+                    "symbol": t["symbol"],
+                    "base": t["symbol"].replace("USDT",""),
+                    "volume": float(t["quoteVolume"]),
+                    "price": float(t["lastPrice"]),
+                    "change": float(t["priceChangePercent"])
+                }
+                for t in tickers
+                if t["symbol"].endswith("USDT") and float(t["quoteVolume"]) > 0
+            }
+        except Exception as e:
+            self.json_error(502, f"Không thể lấy danh sách từ Binance: {e}")
+            return
+
+        fallback_used = False
+        top100 = []
+
+        try:
+            from urllib.request import Request
+            req = Request(
+                "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=1",
+                headers={"User-Agent": "Mozilla/5.0"}
+            )
+            with urlopen(req, timeout=8) as r:
+                gecko_data = json.load(r)
+            
+            for coin in gecko_data:
+                coingecko_symbol = coin.get("symbol", "").upper()
+                binance_sym = coingecko_symbol + "USDT"
+                if binance_sym in binance_map:
+                    ticker_info = binance_map[binance_sym]
+                    ticker_info["name"] = coin.get("name", coin.get("id", ""))
+                    ticker_info["market_cap"] = coin.get("market_cap", 0)
+                    ticker_info["rank"] = coin.get("market_cap_rank", 999)
+                    top100.append(ticker_info)
+                    if len(top100) >= 100:
+                        break
+            
+            if len(top100) < 100:
+                existing_symbols = {c["symbol"] for c in top100}
+                FALLBACK_TOP100 = [
+                    "BTC", "ETH", "BNB", "SOL", "XRP", "ADA", "DOGE", "SHIB", "AVAX", "DOT",
+                    "LINK", "TRX", "NEAR", "MATIC", "LTC", "BCH", "UNI", "ICP", "APT", "FIL",
+                    "ATOM", "STX", "RNDR", "SUI", "FTM", "OP", "INJ", "IMX", "LDO", "THETA",
+                    "TIA", "VET", "MKR", "ETC", "RUNE", "PEPE", "WIF", "ARB", "JUP", "FLOKI",
+                    "BONK", "FET", "EGLD", "FLOW", "SEI", "GALA", "DYDX", "ENS", "CRV", "BEAM",
+                    "PYTH", "JTO", "ORDI", "WLD", "AXS", "MANA", "SAND", "AGIX", "AAVE", "QNT",
+                    "ALGO", "MINA", "KAS", "CHZ", "ZIL", "EOS", "IOTA", "KLAY", "LRC", "GMT",
+                    "WOO", "TWT", "CAKE", "BAT", "HOT", "QTUM", "WAVES", "ONE", "SUSHI", "1INCH",
+                    "ZRX", "ANKR", "MASK", "LPT", "BAND", "API3", "CELO", "ENJ", "RVN", "JASMY",
+                    "IOST", "STORJ", "OMG", "ONT", "HBAR", "KAVA", "BTT", "VTHO", "GRT", "RSR"
+                ]
+                rank = len(top100) + 1
+                for base in FALLBACK_TOP100:
+                    binance_sym = base + "USDT"
+                    if binance_sym not in existing_symbols and binance_sym in binance_map:
+                        ticker_info = binance_map[binance_sym]
+                        ticker_info["name"] = base
+                        ticker_info["market_cap"] = 0
+                        ticker_info["rank"] = 900 + rank
+                        top100.append(ticker_info)
+                        rank += 1
+                        if len(top100) >= 100:
+                            break
+        except Exception as e:
+            fallback_used = True
+            print(f"  [Warning] CoinGecko API error: {e}. Sử dụng danh sách fallback.")
+
+        if len(top100) < 50:
+            top100 = []
+            fallback_used = True
+            FALLBACK_TOP100 = [
+                "BTC", "ETH", "BNB", "SOL", "XRP", "ADA", "DOGE", "SHIB", "AVAX", "DOT",
+                "LINK", "TRX", "NEAR", "MATIC", "LTC", "BCH", "UNI", "ICP", "APT", "FIL",
+                "ATOM", "STX", "RNDR", "SUI", "FTM", "OP", "INJ", "IMX", "LDO", "THETA",
+                "TIA", "VET", "MKR", "ETC", "RUNE", "PEPE", "WIF", "ARB", "JUP", "FLOKI",
+                "BONK", "FET", "EGLD", "FLOW", "SEI", "GALA", "DYDX", "ENS", "CRV", "BEAM",
+                "PYTH", "JTO", "ORDI", "WLD", "AXS", "MANA", "SAND", "AGIX", "AAVE", "QNT",
+                "ALGO", "MINA", "KAS", "CHZ", "ZIL", "EOS", "IOTA", "KLAY", "LRC", "GMT",
+                "WOO", "TWT", "CAKE", "BAT", "HOT", "QTUM", "WAVES", "ONE", "SUSHI", "1INCH",
+                "ZRX", "ANKR", "MASK", "LPT", "BAND", "API3", "CELO", "ENJ", "RVN", "JASMY",
+                "IOST", "STORJ", "OMG", "ONT", "HBAR", "KAVA", "BTT", "VTHO", "GRT", "RSR"
+            ]
+            rank = 1
+            for base in FALLBACK_TOP100:
+                binance_sym = base + "USDT"
+                if binance_sym in binance_map:
+                    ticker_info = binance_map[binance_sym]
+                    ticker_info["name"] = base
+                    ticker_info["market_cap"] = 0
+                    ticker_info["rank"] = rank
+                    top100.append(ticker_info)
+                    rank += 1
+                    if len(top100) >= 100:
+                        break
+
+        top100.sort(key=lambda x: x.get("rank", 999))
+        self.json_ok({"coins": top100, "fallback": fallback_used})
+
     # ── /api/download (SSE) ───────────────────────────────────────────
     def api_download(self, params):
         """Stream-download dữ liệu Binance vào DB, trả về SSE events"""
@@ -309,7 +418,7 @@ class Handler(SimpleHTTPRequestHandler):
         self.wfile.write(body)
 
     def log_message(self, fmt, *args):
-        if "/api/" in (args[0] if args else ""):
+        if args and isinstance(args[0], str) and "/api/" in args[0]:
             now = datetime.now().strftime("%H:%M:%S")
             print(f"  [{now}] {args[0][:60]} → {args[1]}")
 
