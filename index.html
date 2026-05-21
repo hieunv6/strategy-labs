@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EMA Strategy — Phân Tích Chiến Lược Giao Cắt EMA 20/50</title>
+  <meta name="description" content="Công cụ phân tích chiến lược trading EMA 20/50: giao cắt, retest, mô hình nến đảo chiều, tín hiệu buy/sell" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="grain-overlay"></div>
+
+  <!-- Header -->
+  <header id="main-header">
+    <div class="header-inner">
+      <div class="logo-block">
+        <div class="logo-mark">
+          <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+            <path d="M4 24 L14 4 L24 24" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            <path d="M8 18 L20 18" stroke="var(--accent-dim)" stroke-width="1.5" stroke-linecap="round"/>
+            <circle cx="14" cy="4" r="2" fill="var(--accent)"/>
+          </svg>
+        </div>
+        <div>
+          <div class="logo-text">EMA Strategy</div>
+          <div class="logo-sub">EMA 20/50 · Retest · Đảo Chiều</div>
+        </div>
+      </div>
+      <div class="header-controls">
+        <a href="backtest.html" class="btn-backtest">📊 Backtest</a>
+        <select id="symbolSelect" class="ctrl-select" onchange="onParamChange()">
+          <option value="BTCUSDT">BTC/USDT</option>
+          <option value="ETHUSDT">ETH/USDT</option>
+          <option value="BNBUSDT">BNB/USDT</option>
+          <option value="SOLUSDT">SOL/USDT</option>
+          <option value="XRPUSDT">XRP/USDT</option>
+          <option value="ADAUSDT">ADA/USDT</option>
+          <option value="DOGEUSDT">DOGE/USDT</option>
+          <option value="DOTUSDT">DOT/USDT</option>
+        </select>
+        <select id="intervalSelect" class="ctrl-select" onchange="onParamChange()">
+          <option value="15m">15 phút</option>
+          <option value="1h">1 giờ</option>
+          <option value="4h" selected>4 giờ</option>
+          <option value="1d">1 ngày</option>
+          <option value="1w">1 tuần</option>
+        </select>
+        <select id="limitSelect" class="ctrl-select" onchange="onParamChange()">
+          <option value="100">100 nến</option>
+          <option value="150">150 nến</option>
+          <option value="200" selected>200 nến</option>
+        </select>
+        <button class="btn-regenerate" id="btnRefresh" onclick="loadRealData()">↻ Làm mới</button>
+        <div class="loading-dot" id="loadingDot"></div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Strategy Info Bar -->
+  <div class="strategy-bar">
+    <div class="strategy-bar-inner">
+      <div class="strategy-step" id="step1">
+        <div class="step-num">01</div>
+        <div class="step-body">
+          <div class="step-title">Giao Cắt EMA</div>
+          <div class="step-desc">EMA 20 cắt EMA 50<br>→ xác định xu hướng</div>
+        </div>
+      </div>
+      <div class="step-arrow">→</div>
+      <div class="strategy-step" id="step2">
+        <div class="step-num">02</div>
+        <div class="step-body">
+          <div class="step-title">Retest</div>
+          <div class="step-desc">Giá quay về chạm<br>EMA 20 hoặc EMA 50</div>
+        </div>
+      </div>
+      <div class="step-arrow">→</div>
+      <div class="strategy-step" id="step3">
+        <div class="step-num">03</div>
+        <div class="step-body">
+          <div class="step-title">Nến Đảo Chiều</div>
+          <div class="step-desc">Hammer, Engulfing,<br>Pin Bar, Doji...</div>
+        </div>
+      </div>
+      <div class="step-arrow">→</div>
+      <div class="strategy-step" id="step4">
+        <div class="step-num">04</div>
+        <div class="step-body">
+          <div class="step-title">Vào Lệnh</div>
+          <div class="step-desc">BUY / SELL theo<br>chiều xu hướng</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Content -->
+  <main class="main-content">
+    <!-- Chart Panel -->
+    <div class="chart-panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <span class="panel-label">BIỂU ĐỒ GIÁ</span>
+          <span class="pair-badge" id="pair-badge">BTC/USDT · 4h</span>
+          <span class="live-badge">🔴 LIVE</span>
+        </div>
+        <div class="legend">
+          <div class="legend-item"><div class="legend-dot ema20"></div><span>EMA 20</span></div>
+          <div class="legend-item"><div class="legend-dot ema50"></div><span>EMA 50</span></div>
+          <div class="legend-item"><div class="legend-dot signal-buy"></div><span>BUY Signal</span></div>
+          <div class="legend-item"><div class="legend-dot signal-sell"></div><span>SELL Signal</span></div>
+        </div>
+      </div>
+      <canvas id="chartCanvas"></canvas>
+      <div class="chart-annotations" id="chartAnnotations"></div>
+    </div>
+
+    <!-- Right Panel -->
+    <div class="right-panel">
+      <!-- Signal Box -->
+      <div class="signal-box" id="signalBox">
+        <div class="signal-label">TÍN HIỆU HIỆN TẠI</div>
+        <div class="signal-value" id="signalValue">—</div>
+        <div class="signal-detail" id="signalDetail">Chưa có tín hiệu</div>
+      </div>
+
+      <!-- Candle Pattern Info -->
+      <div class="info-card" id="candleInfo">
+        <div class="info-card-title">🕯 Mô Hình Nến</div>
+        <div class="candle-pattern-display" id="candlePatternDisplay">
+          <div class="pattern-name" id="patternName">—</div>
+          <div class="pattern-desc" id="patternDesc">Chưa phát hiện mô hình</div>
+          <canvas id="candlePatternCanvas" width="100" height="120"></canvas>
+        </div>
+      </div>
+
+      <!-- EMA Status -->
+      <div class="info-card">
+        <div class="info-card-title">📊 Trạng Thái EMA</div>
+        <div class="ema-status-grid">
+          <div class="ema-stat">
+            <div class="ema-label">EMA 20</div>
+            <div class="ema-value" id="ema20val">—</div>
+          </div>
+          <div class="ema-stat">
+            <div class="ema-label">EMA 50</div>
+            <div class="ema-value" id="ema50val">—</div>
+          </div>
+          <div class="ema-stat cross-stat">
+            <div class="ema-label">Giao Cắt</div>
+            <div class="ema-value" id="crossType">—</div>
+          </div>
+          <div class="ema-stat">
+            <div class="ema-label">Retest</div>
+            <div class="ema-value" id="retestStatus">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Trade Setup -->
+      <div class="info-card trade-card" id="tradeCard">
+        <div class="info-card-title">⚡ Setup Giao Dịch</div>
+        <div class="trade-rows">
+          <div class="trade-row">
+            <span class="trade-key">Entry</span>
+            <span class="trade-val" id="tradeEntry">—</span>
+          </div>
+          <div class="trade-row">
+            <span class="trade-key">Stop Loss</span>
+            <span class="trade-val red" id="tradeSL">—</span>
+          </div>
+          <div class="trade-row">
+            <span class="trade-key">Take Profit 1</span>
+            <span class="trade-val green" id="tradeTP1">—</span>
+          </div>
+          <div class="trade-row">
+            <span class="trade-key">Take Profit 2</span>
+            <span class="trade-val green" id="tradeTP2">—</span>
+          </div>
+          <div class="trade-row">
+            <span class="trade-key">R:R Ratio</span>
+            <span class="trade-val" id="tradeRR">—</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Rules Card -->
+      <div class="info-card rules-card">
+        <div class="info-card-title">📋 Quy Tắc Vào Lệnh</div>
+        <div class="rule-list">
+          <div class="rule-item" id="rule1">
+            <div class="rule-check">◯</div>
+            <div class="rule-text">EMA 20 giao EMA 50</div>
+          </div>
+          <div class="rule-item" id="rule2">
+            <div class="rule-check">◯</div>
+            <div class="rule-text">Giá retest về EMA</div>
+          </div>
+          <div class="rule-item" id="rule3">
+            <div class="rule-check">◯</div>
+            <div class="rule-text">Nến đảo chiều xuất hiện</div>
+          </div>
+          <div class="rule-item" id="rule4">
+            <div class="rule-check">◯</div>
+            <div class="rule-text">Xác nhận khối lượng</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Candle Patterns Reference -->
+  <section class="patterns-section">
+    <div class="patterns-header">
+      <h2>Các Mô Hình Nến Đảo Chiều</h2>
+      <p>Những pattern xuất hiện sau retest EMA xác nhận tín hiệu vào lệnh</p>
+    </div>
+    <div class="patterns-grid" id="patternsGrid"></div>
+  </section>
+
+  <!-- Toast notification -->
+  <div class="toast" id="toast"></div>
+
+  <script src="chart.js"></script>
+</body>
+</html>

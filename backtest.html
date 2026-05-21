@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Backtest — EMA 20/50 Strategy</title>
+  <meta name="description" content="Backtest chiến lược giao dịch EMA 20/50: crossover, retest, mô hình nến đảo chiều" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="backtest.css" />
+</head>
+<body>
+  <div id="grain-overlay"></div>
+
+  <!-- Header -->
+  <header id="main-header">
+    <div class="header-inner">
+      <div class="logo-block">
+        <div class="logo-mark">
+          <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+            <path d="M4 24 L14 4 L24 24" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            <path d="M8 18 L20 18" stroke="var(--accent-dim)" stroke-width="1.5" stroke-linecap="round"/>
+            <circle cx="14" cy="4" r="2" fill="var(--accent)"/>
+          </svg>
+        </div>
+        <div>
+          <div class="logo-text">EMA Strategy</div>
+          <div class="logo-sub">Backtest Engine</div>
+        </div>
+      </div>
+      <div class="header-controls">
+        <a href="index.html" class="btn-nav">← Live Chart</a>
+        <span class="live-badge">📊 BACKTEST</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Settings Panel -->
+  <div class="bt-settings-bar">
+    <div class="bt-settings-inner">
+
+      <!-- Mode toggle -->
+      <div class="setting-group">
+        <label class="setting-label">Chế độ</label>
+        <div class="mode-toggle">
+          <button id="modeSingle" class="mode-btn active" onclick="toggleMode('single')">Đơn</button>
+          <button id="modePortfolio" class="mode-btn" onclick="toggleMode('portfolio')">Danh mục</button>
+        </div>
+      </div>
+
+      <!-- Single symbol -->
+      <div id="singleSymbolWrap" class="setting-group symbol-search-group">
+        <label class="setting-label">Symbol</label>
+        <div class="symbol-search-wrap" id="symbolSearchWrap">
+          <input id="btSymbol" class="ctrl-input symbol-input" type="text"
+            placeholder="Tìm coin... BTC" autocomplete="off" spellcheck="false" value="BTCUSDT" />
+          <div class="symbol-dropdown" id="symbolDropdown"></div>
+        </div>
+      </div>
+
+      <!-- Timeframe -->
+      <div class="setting-group">
+        <label class="setting-label">Timeframe</label>
+        <select id="btInterval" class="ctrl-select">
+          <option value="15m">15 phút</option>
+          <option value="1h">1 giờ</option>
+          <option value="4h" selected>4 giờ</option>
+          <option value="1d">1 ngày</option>
+        </select>
+      </div>
+
+      <div class="setting-group">
+        <label class="setting-label">Khoảng Thời Gian</label>
+        <select id="btRange" class="ctrl-select">
+          <option value="1m">1 tháng</option>
+          <option value="3m">3 tháng</option>
+          <option value="6m">6 tháng</option>
+          <option value="1y">1 năm</option>
+          <option value="2y">2 năm</option>
+          <option value="3y" selected>3 năm</option>
+          <option value="5y">5 năm</option>
+          <option value="10y">10 năm</option>
+        </select>
+      </div>
+
+      <!-- SL Type -->
+      <div class="setting-group">
+        <label class="setting-label">Loại Stop Loss</label>
+        <div class="mode-toggle">
+          <button id="slModeFixed" class="mode-btn active" onclick="toggleSLMode('fixed')">Fixed %</button>
+          <button id="slModeATR" class="mode-btn" onclick="toggleSLMode('atr')">ATR×</button>
+        </div>
+      </div>
+
+      <!-- Fixed SL -->
+      <div id="slFixedWrap" class="setting-group">
+        <label class="setting-label">SL %</label>
+        <select id="btSL" class="ctrl-select">
+          <option value="0.01">1.0%</option>
+          <option value="0.015" selected>1.5%</option>
+          <option value="0.02">2.0%</option>
+          <option value="0.03">3.0%</option>
+          <option value="0.05">5.0%</option>
+        </select>
+      </div>
+
+      <!-- ATR SL -->
+      <div id="slATRWrap" class="setting-group" style="display:none">
+        <label class="setting-label">ATR Period</label>
+        <input id="atrPeriod" class="ctrl-input" type="number" value="14" min="5" max="50" style="width:64px" />
+      </div>
+      <div id="slATRMultWrap" class="setting-group" style="display:none">
+        <label class="setting-label">ATR Mult ×</label>
+        <input id="atrMult" class="ctrl-input" type="number" value="1.5" min="0.5" max="5" step="0.1" style="width:64px" />
+      </div>
+
+      <div class="setting-group">
+        <label class="setting-label">R:R Ratio</label>
+        <select id="btRR" class="ctrl-select">
+          <option value="1.5">1 : 1.5</option>
+          <option value="2" selected>1 : 2</option>
+          <option value="2.5">1 : 2.5</option>
+          <option value="3">1 : 3</option>
+        </select>
+      </div>
+
+      <div class="setting-group">
+        <label class="setting-label">Vốn ban đầu</label>
+        <select id="btCapital" class="ctrl-select">
+          <option value="1000">$1,000</option>
+          <option value="5000">$5,000</option>
+          <option value="10000" selected>$10,000</option>
+          <option value="100000">$100,000</option>
+        </select>
+      </div>
+
+      <button class="btn-run" id="btnRun" onclick="runBacktest()">
+        <span id="btnRunText">▶ Chạy Backtest</span>
+      </button>
+
+      <div class="loading-dot" id="loadingDot"></div>
+    </div>
+
+    <!-- Portfolio coins -->
+    <div id="portfolioCoinsWrap" class="portfolio-coins-bar" style="display:none">
+      <span class="portfolio-label">📊 Chọn coin:</span>
+      <div class="portfolio-chips" id="portfolioChips"></div>
+    </div>
+
+    <!-- Progress bar -->
+    <div class="bt-progress-wrap" id="progressWrap" style="display:none">
+      <div class="bt-progress-track">
+        <div class="bt-progress-bar" id="progressBar" style="width:0%"></div>
+      </div>
+      <span class="bt-progress-label" id="progressLabel">0%</span>
+    </div>
+  </div>
+
+  <!-- Stats Bar -->
+  <div class="bt-stats-bar" id="statsBar" style="display:none">
+    <!-- Row 1: Core metrics -->
+    <div class="bt-stats-inner">
+      <div class="stat-card">
+        <div class="stat-label">Tổng Lệnh</div>
+        <div class="stat-value" id="statTotal">—</div>
+      </div>
+      <div class="stat-card highlight-green">
+        <div class="stat-label">Win Rate</div>
+        <div class="stat-value" id="statWinRate">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Profit Factor</div>
+        <div class="stat-value" id="statPF">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Tổng P&L</div>
+        <div class="stat-value" id="statPnL">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Vốn Cuối</div>
+        <div class="stat-value" id="statFinal">—</div>
+      </div>
+      <div class="stat-card highlight-red">
+        <div class="stat-label">Max Drawdown</div>
+        <div class="stat-value" id="statDD">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Avg Win</div>
+        <div class="stat-value green" id="statAvgWin">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Avg Loss</div>
+        <div class="stat-value red" id="statAvgLoss">—</div>
+      </div>
+    </div>
+    <!-- Row 2: Extended metrics -->
+    <div class="bt-stats-inner bt-stats-ext">
+      <div class="stat-card-sm">
+        <div class="stat-label-sm">Sharpe Ratio</div>
+        <div class="stat-val-sm" id="statSharpe">—</div>
+      </div>
+      <div class="stat-card-sm">
+        <div class="stat-label-sm">Sortino</div>
+        <div class="stat-val-sm" id="statSortino">—</div>
+      </div>
+      <div class="stat-card-sm">
+        <div class="stat-label-sm">Recovery Factor</div>
+        <div class="stat-val-sm" id="statRecovery">—</div>
+      </div>
+      <div class="stat-card-sm">
+        <div class="stat-label-sm">Expectancy/lệnh</div>
+        <div class="stat-val-sm" id="statExpectancy">—</div>
+      </div>
+      <div class="stat-card-sm">
+        <div class="stat-label-sm">Avg Hold</div>
+        <div class="stat-val-sm" id="statAvgHold">—</div>
+      </div>
+      <div class="stat-card-sm">
+        <div class="stat-label-sm">Max Thua liên tiếp</div>
+        <div class="stat-val-sm" id="statMaxLoss" style="color:var(--red)">—</div>
+      </div>
+      <div class="stat-card-sm">
+        <div class="stat-label-sm">Max Thắng liên tiếp</div>
+        <div class="stat-val-sm" id="statMaxWin" style="color:var(--green)">—</div>
+      </div>
+    </div>
+    <div class="bt-candle-info"><span id="btCandleCount"></span></div>
+  </div>
+
+  <!-- Main Content -->
+  <main class="bt-main" id="btMain" style="display:none">
+
+    <!-- Equity Curve -->
+    <div class="bt-section">
+      <div class="bt-section-header">
+        <h2 class="bt-section-title">📈 Đường Vốn (Equity Curve)</h2>
+        <div class="equity-legend">
+          <span class="eq-leg win">▲ WIN</span>
+          <span class="eq-leg loss">▼ LOSS</span>
+        </div>
+      </div>
+      <div class="equity-chart-wrap">
+        <canvas id="equityCanvas"></canvas>
+      </div>
+    </div>
+
+    <!-- Monthly Heatmap -->
+    <div class="bt-section">
+      <div class="bt-section-header">
+        <h2 class="bt-section-title">📅 Hiệu Suất Theo Tháng</h2>
+        <span style="font-size:11px;color:var(--text-muted);font-family:var(--font-mono)">màu xanh = lãi · đỏ = lỗ · đậm hơn = lớn hơn</span>
+      </div>
+      <div id="monthlyHeatmap" style="overflow-x:auto;padding:8px 16px 16px"></div>
+    </div>
+
+    <!-- Trade Distribution -->
+    <div class="bt-section">
+      <div class="bt-section-header">
+        <h2 class="bt-section-title">🎯 Phân Bổ Kết Quả</h2>
+      </div>
+      <div class="dist-grid" id="distGrid"></div>
+    </div>
+
+    <!-- Pattern Performance -->
+    <div class="bt-section">
+      <div class="bt-section-header">
+        <h2 class="bt-section-title">🕯 Hiệu Suất Theo Pattern</h2>
+      </div>
+      <div class="trade-table-wrap">
+        <table class="trade-table">
+          <thead><tr>
+            <th>Pattern</th><th>Tổng</th><th>Thắng</th><th>Thua</th>
+            <th>Win Rate</th><th>Avg PnL</th><th>Tổng PnL</th>
+          </tr></thead>
+          <tbody id="patternTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Symbol Breakdown (portfolio) -->
+    <div class="bt-section" id="symbolBreakdownSection" style="display:none">
+      <div class="bt-section-header">
+        <h2 class="bt-section-title">📊 Chi Tiết Theo Symbol</h2>
+      </div>
+      <div class="trade-table-wrap">
+        <table class="trade-table">
+          <thead><tr>
+            <th>Symbol</th><th>Lệnh</th><th>Win Rate</th><th>PF</th>
+            <th>Tổng PnL</th><th>Drawdown</th><th>Avg Hold</th><th>Sharpe</th>
+          </tr></thead>
+          <tbody id="symbolTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Trade Table -->
+    <div class="bt-section">
+      <div class="bt-section-header">
+        <h2 class="bt-section-title">📋 Lịch Sử Giao Dịch</h2>
+        <div class="table-filter">
+          <button class="filter-btn active" onclick="filterTrades('all', this)">Tất cả</button>
+          <button class="filter-btn" onclick="filterTrades('win', this)">✅ Thắng</button>
+          <button class="filter-btn" onclick="filterTrades('loss', this)">❌ Thua</button>
+        </div>
+      </div>
+      <div class="trade-table-wrap">
+        <table class="trade-table" id="tradeTable">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th class="col-symbol" style="display:none">Symbol</th>
+              <th>Thời Gian</th>
+              <th>Loại</th>
+              <th>Pattern</th>
+              <th>Entry</th>
+              <th>SL</th>
+              <th>TP</th>
+              <th>Thoát Tại</th>
+              <th>SL Dist</th>
+              <th>Hold</th>
+              <th>KQ</th>
+              <th>PnL ($)</th>
+              <th>PnL (%)</th>
+            </tr>
+          </thead>
+          <tbody id="tradeTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Download Modal -->
+  <div class="dl-overlay" id="dlOverlay">
+    <div class="dl-modal">
+      <div class="dl-icon">⬇️</div>
+      <div class="dl-title" id="dlTitle">Đang tải dữ liệu...</div>
+      <div class="dl-sub" id="dlSub">Kết nối Binance API</div>
+      <div class="dl-progress-track">
+        <div class="dl-progress-bar" id="dlProgressBar" style="width:0%"></div>
+      </div>
+      <div class="dl-stats" id="dlStats">0 nến</div>
+      <button class="dl-cancel" onclick="cancelDownload()">✕ Huỷ</button>
+    </div>
+  </div>
+
+  <!-- Data Manager -->
+  <div class="dm-panel" id="dmPanel">
+    <div class="dm-header">
+      <div class="dm-title">💾 Kho Dữ Liệu Local</div>
+      <div class="dm-actions">
+        <span class="dm-total" id="cacheTotalSize"></span>
+        <button class="cache-btn danger" onclick="clearAllCache()">🗑 Xóa tất cả</button>
+      </div>
+    </div>
+    <div class="dm-body">
+      <div id="cacheList"></div>
+      <div id="cacheEmpty" class="cache-empty" style="display:none">
+        <span>Chưa có dữ liệu nào. Chạy Backtest để tải và lưu tự động.</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Empty state -->
+  <div class="bt-empty" id="btEmpty">
+    <div class="bt-empty-icon">📊</div>
+    <div class="bt-empty-title">Chưa có dữ liệu backtest</div>
+    <div class="bt-empty-desc">Cài đặt tham số và nhấn <strong>▶ Chạy Backtest</strong> để bắt đầu<br/><small style="color:var(--text-muted);margin-top:8px;display:block">Dữ liệu sẽ được lưu tự động vào cache sau lần chạy đầu tiên</small></div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast"></div>
+
+  <script src="data-cache.js"></script>
+  <script src="backtest.js"></script>
+</body>
+</html>
