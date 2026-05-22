@@ -1,0 +1,1 @@
+{"name":"strategy-lab","version":"1.0.0","scripts":{"test":"node tests/backtest.test.js","start":"python3 server.py"},"description":"EMA Strategy Backtest Engine"}

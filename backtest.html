@@ -55,7 +55,8 @@
         <label class="setting-label">Symbol</label>
         <div class="symbol-search-wrap" id="symbolSearchWrap">
           <input id="btSymbol" class="ctrl-input symbol-input" type="text"
-            placeholder="Tìm coin... BTC" autocomplete="off" spellcheck="false" value="BTCUSDT" />
+            placeholder="Tìm coin... BTC" autocomplete="off" spellcheck="false" value="BTCUSDT"
+            oninput="onATRParamChange()" />
           <div class="symbol-dropdown" id="symbolDropdown"></div>
         </div>
       </div>
@@ -63,7 +64,7 @@
       <!-- Timeframe -->
       <div class="setting-group">
         <label class="setting-label">Timeframe</label>
-        <select id="btInterval" class="ctrl-select">
+        <select id="btInterval" class="ctrl-select" onchange="onATRParamChange()">
           <option value="15m">15 phút</option>
           <option value="1h">1 giờ</option>
           <option value="4h" selected>4 giờ</option>
@@ -106,11 +107,13 @@
       <!-- ATR SL -->
       <div id="slATRWrap" class="setting-group" style="display:none">
         <label class="setting-label">ATR Period</label>
-        <input id="atrPeriod" class="ctrl-input" type="number" value="14" min="5" max="50" style="width:64px" />
+        <input id="atrPeriod" class="ctrl-input" type="number" value="14" min="5" max="50"
+          style="width:64px" oninput="onATRParamChange()" />
       </div>
       <div id="slATRMultWrap" class="setting-group" style="display:none">
         <label class="setting-label">ATR Mult ×</label>
-        <input id="atrMult" class="ctrl-input" type="number" value="1.5" min="0.5" max="5" step="0.1" style="width:64px" />
+        <input id="atrMult" class="ctrl-input" type="number" value="1.5" min="0.5" max="5" step="0.1"
+          style="width:64px" oninput="onATRParamChange()" />
       </div>
 
       <div class="setting-group">
@@ -288,6 +291,8 @@
     </div>
     <!-- Fee disclaimer -->
     <div id="feeDisclaimer" style="display:none;padding:6px 24px;font-size:11px;color:#f5a623;font-family:var(--font-mono);background:rgba(245,166,35,0.08);border-top:1px solid rgba(245,166,35,0.15)"></div>
+    <!-- ATR Context -->
+    <div id="atrContext" style="display:none;padding:6px 24px;font-size:11px;color:var(--text-dim);font-family:var(--font-mono);background:rgba(100,180,255,0.05);border-top:1px solid rgba(100,180,255,0.1)"></div>
     <div class="bt-candle-info"><span id="btCandleCount"></span></div>
   </div>
 

@@ -193,7 +193,22 @@ let _dlController = null;
 let _dlQueueCancelled = false;
 let _dlActiveReject = null;
 
-async function autoDownloadSymbols(symbols, interval) {
+// Sprint 3: Estimate download time based on interval & date range
+function estimateDownload(interval, startMs, endMs) {
+  const intervalMs  = getIntervalMs(interval);
+  const totalBars   = Math.ceil((endMs - startMs) / intervalMs);
+  const batchSize   = 1000;
+  const batches     = Math.ceil(totalBars / batchSize);
+  // Empirically ~1.5s per batch (Binance API latency)
+  const secsEst     = Math.round(batches * 1.5);
+  const minsEst     = Math.floor(secsEst / 60);
+  const timeStr     = secsEst < 60
+    ? `~${secsEst}s`
+    : `~${minsEst}ph${secsEst % 60 > 0 ? ` ${secsEst % 60}s` : ''}`;
+  return { totalBars, batches, timeStr };
+}
+
+async function autoDownloadSymbols(symbols, interval, startMs, endMs) {
   _dlQueueCancelled = false;
   _dlActiveReject = null;
   const overlay  = document.getElementById('dlOverlay');
@@ -208,11 +223,15 @@ async function autoDownloadSymbols(symbols, interval) {
     if (_dlQueueCancelled) break;
     const symbol = symbols[i];
     const displaySymbol = symbol.replace('USDT', '/USDT');
+
+    // Sprint 3: Show time estimate before download starts
+    const est = startMs && endMs ? estimateDownload(interval, startMs, endMs) : null;
+    const estStr = est ? ` · ${est.totalBars.toLocaleString()} nến · ${est.timeStr}` : '';
     
     titleEl.textContent = `Tải dữ liệu ${displaySymbol} (${i + 1}/${symbols.length})`;
-    subEl.textContent   = `Đang kết nối Binance API...`;
+    subEl.textContent   = `Kết nối Binance API${estStr}`;
     barEl.style.width   = '0%';
-    statsEl.textContent = '0 nến';
+    statsEl.textContent = est ? `Ước tính ${est.batches} batch${estStr}` : '0 nến';
 
     try {
       await new Promise((resolve, reject) => {
@@ -345,7 +364,8 @@ async function loadCandles(symbol, interval, startTimeMs, endTimeMs, onProgress)
   } catch(e) {
     if (e.code === 'NO_DATA') {
       onProgress?.(-1, 0, `⬇ Chưa có dữ liệu — đang tải từ Binance...`);
-      await autoDownloadSymbols([symbol], interval);
+      // Pass startMs/endMs so estimate is shown in overlay
+      await autoDownloadSymbols([symbol], interval, startTimeMs, end);
       return await fetchFromLocalDB(symbol, interval, startTimeMs, end, onProgress);
     }
     throw e;
@@ -472,6 +492,54 @@ function onSizeTypeChange() {
     valInput.removeAttribute('max');
     valInput.step = '100';
   }
+}
+
+// ============================================
+// Sprint 3: ATR CONTEXT — show live ATR value
+// ============================================
+let _atrContextTimer = null;
+
+async function updateATRContext() {
+  const atrCtxEl = document.getElementById('atrContext');
+  if (!atrCtxEl) return;
+  const symbol   = document.getElementById('btSymbol')?.value?.toUpperCase()?.trim();
+  const interval = document.getElementById('btInterval')?.value || '4h';
+  const period   = parseInt(document.getElementById('atrPeriod')?.value || 14);
+  const mult     = parseFloat(document.getElementById('atrMult')?.value || 1.5);
+  if (!symbol) { atrCtxEl.textContent = ''; return; }
+
+  atrCtxEl.textContent = '⏳ Đang tính ATR...';
+  try {
+    const res  = await fetch(`${LOCAL_API}/klines?symbol=${symbol}&interval=${interval}`);
+    if (!res.ok) throw new Error('no data');
+    const data = await res.json();
+    if (!data || data.length < period + 2) throw new Error('insufficient data');
+
+    const atrArr = calcATR(data, period);
+    const lastATR = atrArr[atrArr.length - 1];
+    if (!lastATR) throw new Error('ATR null');
+
+    const entry    = data[data.length - 1].close;
+    const slDist   = lastATR * mult;
+    const slPct    = (slDist / entry * 100).toFixed(2);
+    const tpDist   = slDist * parseFloat(document.getElementById('btRR')?.value || 2);
+    const slPrice  = (entry - slDist).toFixed(2);
+    const tpPrice  = (entry + tpDist).toFixed(2);
+
+    atrCtxEl.innerHTML =
+      `ATR(${period}) = <strong>$${lastATR.toFixed(2)}</strong> · ` +
+      `SL dist = <span style="color:var(--red)">$${slDist.toFixed(2)} (${slPct}%)</span> · ` +
+      `<span style="color:var(--text-muted)">SL≈$${slPrice} · TP≈$${tpPrice}</span>`;
+  } catch(e) {
+    atrCtxEl.textContent = e.message === 'no data'
+      ? '⚠️ Chưa có dữ liệu — chạy backtest để tải'
+      : `ATR: ${e.message}`;
+  }
+}
+
+function onATRParamChange() {
+  clearTimeout(_atrContextTimer);
+  _atrContextTimer = setTimeout(updateATRContext, 600);
 }
 
 // ============================================
@@ -1152,6 +1220,9 @@ function toggleSLMode(mode) {
   document.getElementById('slFixedWrap').style.display    = mode === 'fixed' ? 'flex' : 'none';
   document.getElementById('slATRWrap').style.display      = mode === 'atr'   ? 'flex' : 'none';
   document.getElementById('slATRMultWrap').style.display  = mode === 'atr'   ? 'flex' : 'none';
+  const ctx = document.getElementById('atrContext');
+  if (ctx) ctx.style.display = mode === 'atr' ? 'block' : 'none';
+  if (mode === 'atr') updateATRContext();
 }
 
 // ============================================
@@ -1342,11 +1413,12 @@ async function runBacktest() {
     missingSymbols = [...symbolsToTest]; // Safe fallback: assume all need check
   }
 
-  // Auto-download all missing data sequentially
+  // Auto-download all missing data sequentially (pass date range for estimate)
   if (missingSymbols.length > 0) {
-    showToast(`⬇️ Phát hiện ${missingSymbols.length} coin thiếu/cũ dữ liệu. Đang tự động tải...`);
+    const est = estimateDownload(interval, startTimeMs, endTimeMs);
+    showToast(`⬇️ ${missingSymbols.length} coin thiếu/cũ · ${est.totalBars.toLocaleString()} nến · ${est.timeStr} mỗi coin`);
     try {
-      await autoDownloadSymbols(missingSymbols, interval);
+      await autoDownloadSymbols(missingSymbols, interval, startTimeMs, endTimeMs);
       showToast('✅ Tải dữ liệu thành công!');
     } catch (err) {
       console.error("Lỗi khi tải dữ liệu:", err);
@@ -1364,15 +1436,24 @@ async function runBacktest() {
 
     if (BT.mode === 'portfolio') {
       // ── PORTFOLIO MODE ──────────────────────────────
-      const symbols = getSelectedPortfolioSymbols();
+      // Sprint 3: Portfolio capital tracking
+      // Vốn chia đều ban đầu, nhưng lãi/lỗ của coin trước được cộng dồn
+      // vào vốn pool → capital per coin phản ánh thực tế hơn
+      const symbols    = getSelectedPortfolioSymbols();
       if (symbols.length < 1) {
         showToast('⚠️ Chọn ít nhất 1 coin trong danh mục'); setLoading(false); BT.loading = false; return;
       }
-      const perCap = capital / symbols.length;
+      let runningCap   = capital;          // tổng vốn pool hiện tại
+      const perCapInit = capital / symbols.length; // vốn ban đầu mỗi slot
 
       for (let i = 0; i < symbols.length; i++) {
-        const sym = symbols[i];
-        setProgress(Math.round(i / symbols.length * 80), `⏳ ${sym.replace('USDT','/USDT')} (${i+1}/${symbols.length})`);
+        const sym    = symbols[i];
+        // Mỗi coin được cấp vốn = phần còn lại chia đều theo số slot còn lại
+        const slotCap = runningCap / (symbols.length - i);
+        setProgress(
+          Math.round(i / symbols.length * 80),
+          `⏳ ${sym.replace('USDT','/USDT')} (${i+1}/${symbols.length}) · Pool: $${Math.round(runningCap).toLocaleString()}`
+        );
 
         try {
           const candles = await loadCandles(sym, interval, startTimeMs, endTimeMs,
@@ -1383,13 +1464,20 @@ async function runBacktest() {
           if (!candles || candles.length < 10) {
             console.warn(`Bỏ qua ${sym}: Không đủ dữ liệu (${candles ? candles.length : 0} nến)`);
             showToast(`⚠️ ${sym.replace('USDT','/USDT')} không đủ dữ liệu. Bỏ qua.`);
+            // Không dùng slot này → vốn vẫn nguyên, nhưng cần cộng lại cho pool
+            // (slot không dùng vẫn được giữ trong runningCap)
             continue;
           }
 
-          const trades = runSymbolBacktest(candles, { ...params, capital: perCap });
+          const trades = runSymbolBacktest(candles, { ...params, capital: slotCap });
           trades.forEach(t => t.symbol = sym);
-          const symMetrics = calcMetrics(trades, perCap, startTimeMs, endTimeMs);
-          perSymbol[sym]   = { trades, candles: candles.length, metrics: symMetrics };
+
+          // Sprint 3: Cộng lãi/lỗ thực của coin vào pool
+          const symPnL = trades.reduce((s, t) => s + t.pnl, 0);
+          runningCap  += symPnL;  // pool tăng nếu lãi, giảm nếu lỗ
+
+          const symMetrics = calcMetrics(trades, slotCap, startTimeMs, endTimeMs);
+          perSymbol[sym]   = { trades, candles: candles.length, metrics: symMetrics, slotCap };
           allTrades.push(...trades);
         } catch (err) {
           console.error(`Lỗi xử lý backtest cho ${sym}:`, err);
@@ -1398,8 +1486,8 @@ async function runBacktest() {
       }
 
       allTrades.sort((a, b) => a.entryTime - b.entryTime);
-      showToast(`⏳ Tính toán metrics...`);
-      setProgress(90, 'Tính metrics...');
+      showToast(`⏳ Tính toán metrics... Pool cuối: $${Math.round(runningCap).toLocaleString()}`);
+      setProgress(90, `Tính metrics · Pool: $${Math.round(runningCap).toLocaleString()}`);
 
     } else {
       // ── SINGLE MODE ─────────────────────────────────
