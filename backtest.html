@@ -56,6 +56,19 @@
       <span class="strat-tab-icon">🪤</span>
       <span>False Breakout</span>
     </button>
+    <div class="strat-tab-divider">| Trend Following |</div>
+    <button class="strat-tab" data-strategy-id="macd_crossover" onclick="switchStrategy('macd_crossover', this)">
+      <span class="strat-tab-icon">📉</span>
+      <span>MACD</span>
+    </button>
+    <button class="strat-tab" data-strategy-id="supertrend" onclick="switchStrategy('supertrend', this)">
+      <span class="strat-tab-icon">🔱</span>
+      <span>Supertrend</span>
+    </button>
+    <button class="strat-tab" data-strategy-id="donchian_breakout" onclick="switchStrategy('donchian_breakout', this)">
+      <span class="strat-tab-icon">📦</span>
+      <span>Donchian</span>
+    </button>
     <div class="strat-tab-desc" id="stratTabDesc">EMA 20 cắt EMA 50 + Retest + Mô hình nến đảo chiều</div>
   </div>
 
@@ -293,6 +306,46 @@
           </label>
         </div>
       </div>
+
+      <!-- MACD Crossover params -->
+      <div id="params-macd_crossover" class="strat-params-panel">
+        <div class="setting-group">
+          <label class="setting-label" title="EMA nhanh (mặc định 12)">Fast EMA</label>
+          <input id="s_macdFast" class="ctrl-input" type="number" value="12" min="3" max="50" style="width:64px" />
+        </div>
+        <div class="setting-group">
+          <label class="setting-label" title="EMA chậm (mặc định 26)">Slow EMA</label>
+          <input id="s_macdSlow" class="ctrl-input" type="number" value="26" min="10" max="200" style="width:64px" />
+        </div>
+        <div class="setting-group">
+          <label class="setting-label" title="Signal line EMA (mặc định 9)">Signal</label>
+          <input id="s_macdSig" class="ctrl-input" type="number" value="9" min="3" max="30" style="width:64px" />
+        </div>
+      </div>
+
+      <!-- Supertrend params -->
+      <div id="params-supertrend" class="strat-params-panel">
+        <div class="setting-group">
+          <label class="setting-label" title="ATR period để tính band width">ATR Period</label>
+          <input id="s_stAtrPeriod" class="ctrl-input" type="number" value="10" min="5" max="50" style="width:64px" />
+        </div>
+        <div class="setting-group">
+          <label class="setting-label" title="Nhân với ATR để xác định độ rộng band. Nhỏ hơn = nhạy hơn">Multiplier</label>
+          <input id="s_stMultiplier" class="ctrl-input" type="number" value="3" min="1" max="10" step="0.5" style="width:64px" />
+        </div>
+      </div>
+
+      <!-- Donchian Breakout params -->
+      <div id="params-donchian_breakout" class="strat-params-panel">
+        <div class="setting-group">
+          <label class="setting-label" title="Số nến để xác định N-bar high/low (Donchian Channel width)">Lookback</label>
+          <input id="s_dcLookback" class="ctrl-input" type="number" value="20" min="5" max="100" style="width:64px" />
+        </div>
+        <div class="setting-group">
+          <label class="setting-label" title="Close phải vượt level tối thiểu X% để xác nhận breakout thật">Close % min</label>
+          <input id="s_dcClosePct" class="ctrl-input" type="number" value="0.1" min="0.01" max="2" step="0.05" style="width:72px" />
+        </div>
+      </div>
     </div>
 
     <!-- Portfolio coins -->
@@ -425,6 +478,9 @@
           <span class="eq-leg" style="color:#a855f7;font-size:10px;display:none" id="legRSI">— 🔄 RSI</span>
           <span class="eq-leg" style="color:#f97316;font-size:10px;display:none" id="legBB">— 📊 BB</span>
           <span class="eq-leg" style="color:#ec4899;font-size:10px;display:none" id="legFB">— 🩤 Fakeout</span>
+          <span class="eq-leg" style="color:#06b6d4;font-size:10px;display:none" id="legMACD">— 📉 MACD</span>
+          <span class="eq-leg" style="color:#22c55e;font-size:10px;display:none" id="legST">— 🔱 ST</span>
+          <span class="eq-leg" style="color:#f59e0b;font-size:10px;display:none" id="legDC">— 📦 DC</span>
           <span class="eq-leg" style="color:orange;font-size:10px">- - B&amp;H</span>
         </div>
       </div>

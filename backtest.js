@@ -34,6 +34,16 @@ function getStrategyParams(strategyId) {
     extra.fbLookback       = parseInt(document.getElementById('s_fbLookback')?.value      || 20);
     extra.fbBreakoutPct    = parseFloat(document.getElementById('s_fbBreakoutPct')?.value || 0.2);
     extra.fbRequirePattern = document.getElementById('s_fbRequirePattern')?.checked || false;
+  } else if (strategyId === 'macd_crossover') {
+    extra.macdFast = parseInt(document.getElementById('s_macdFast')?.value || 12);
+    extra.macdSlow = parseInt(document.getElementById('s_macdSlow')?.value || 26);
+    extra.macdSig  = parseInt(document.getElementById('s_macdSig')?.value  || 9);
+  } else if (strategyId === 'supertrend') {
+    extra.stAtrPeriod  = parseInt(document.getElementById('s_stAtrPeriod')?.value  || 10);
+    extra.stMultiplier = parseFloat(document.getElementById('s_stMultiplier')?.value || 3);
+  } else if (strategyId === 'donchian_breakout') {
+    extra.dcLookback = parseInt(document.getElementById('s_dcLookback')?.value    || 20);
+    extra.dcClosePct = parseFloat(document.getElementById('s_dcClosePct')?.value  || 0.1);
   }
   return extra;
 }
@@ -237,6 +247,103 @@ const STRATEGY_REGISTRY = {
         trade.fakeDir   = sig.fakeDir;
         trade.levelRef  = sig.levelRef;
         trade.breakPct  = sig.breakPct;
+        trades.push(trade);
+        cap += trade.pnl;
+      });
+      return trades;
+    }
+  },
+
+  // ── TREND-FOLLOWING STRATEGIES ─────────────────────────────────────────────
+
+  macd_crossover: {
+    id: 'macd_crossover',
+    name: 'MACD Crossover',
+    icon: '📉',
+    color: '#06b6d4',
+    desc: 'MACD line cắt Signal line → xác nhận xu hướng bằng histogram',
+    defaultParams: { macdFast: 12, macdSlow: 26, macdSig: 9 },
+    run(candles, params) {
+      const { slMode, slValue, atrPeriod, rrRatio, capital, sizeType, sizeValue,
+              feeRate, maxHoldBars, pattern: filterPattern,
+              macdFast = 12, macdSlow = 26, macdSig = 9 } = params;
+      const macdData = calcMACD(candles, macdFast, macdSlow, macdSig);
+      const atrArr   = slMode === 'atr' ? calcATR(candles, atrPeriod) : null;
+      const sigs     = scanMACDSignals(candles, macdData);
+      const trades   = []; let cap = capital;
+      sigs.forEach(sig => {
+        const pattern = detectPattern(candles, sig.index, sig.type)
+          || (sig.type === 'bull' ? 'bullHammer' : 'shootingStar');
+        if (filterPattern && filterPattern !== 'all' && pattern !== filterPattern) return;
+        const sigIdx = Math.min(sig.index + 1, candles.length - 1);
+        const trade  = simulateTrade(candles, sigIdx, sig.type, slMode, slValue, atrArr, rrRatio, cap, sizeType, sizeValue, feeRate, maxHoldBars);
+        if (!trade) return;
+        trade.pattern  = pattern;
+        trade.macdVal  = sig.macdVal;
+        trade.histVal  = sig.histVal;
+        trades.push(trade);
+        cap += trade.pnl;
+      });
+      return trades;
+    }
+  },
+
+  supertrend: {
+    id: 'supertrend',
+    name: 'Supertrend',
+    icon: '🔱',
+    color: '#22c55e',
+    desc: 'ATR-based trailing band — flip direction khi giá phá vỡ band',
+    defaultParams: { stAtrPeriod: 10, stMultiplier: 3 },
+    run(candles, params) {
+      const { slMode, slValue, atrPeriod, rrRatio, capital, sizeType, sizeValue,
+              feeRate, maxHoldBars, pattern: filterPattern,
+              stAtrPeriod = 10, stMultiplier = 3 } = params;
+      const stData = calcSupertrend(candles, stAtrPeriod, stMultiplier);
+      const atrArr = slMode === 'atr' ? calcATR(candles, atrPeriod) : null;
+      const sigs   = scanSupertrendSignals(candles, stData);
+      const trades = []; let cap = capital;
+      sigs.forEach(sig => {
+        const pattern = detectPattern(candles, sig.index, sig.type)
+          || (sig.type === 'bull' ? 'bullHammer' : 'shootingStar');
+        if (filterPattern && filterPattern !== 'all' && pattern !== filterPattern) return;
+        const sigIdx = Math.min(sig.index + 1, candles.length - 1);
+        const trade  = simulateTrade(candles, sigIdx, sig.type, slMode, slValue, atrArr, rrRatio, cap, sizeType, sizeValue, feeRate, maxHoldBars);
+        if (!trade) return;
+        trade.pattern = pattern;
+        trade.stVal   = sig.stVal;
+        trades.push(trade);
+        cap += trade.pnl;
+      });
+      return trades;
+    }
+  },
+
+  donchian_breakout: {
+    id: 'donchian_breakout',
+    name: 'Donchian Breakout',
+    icon: '📦',
+    color: '#f59e0b',
+    desc: 'Giá đóng cửa phá vỡ N-bar high/low → follow the trend (ngược False Breakout)',
+    defaultParams: { dcLookback: 20, dcClosePct: 0.1 },
+    run(candles, params) {
+      const { slMode, slValue, atrPeriod, rrRatio, capital, sizeType, sizeValue,
+              feeRate, maxHoldBars, pattern: filterPattern,
+              dcLookback = 20, dcClosePct = 0.1 } = params;
+      const swings = calcSwingLevels(candles, dcLookback);
+      const atrArr = slMode === 'atr' ? calcATR(candles, atrPeriod) : null;
+      const sigs   = scanDonchianBreakouts(candles, swings, dcClosePct / 100);
+      const trades = []; let cap = capital;
+      sigs.forEach(sig => {
+        const pattern = detectPattern(candles, sig.index, sig.type)
+          || (sig.type === 'bull' ? 'marubozuBull' : 'marubozuBear');
+        if (filterPattern && filterPattern !== 'all' && pattern !== filterPattern) return;
+        const sigIdx = Math.min(sig.index + 1, candles.length - 1);
+        const trade  = simulateTrade(candles, sigIdx, sig.type, slMode, slValue, atrArr, rrRatio, cap, sizeType, sizeValue, feeRate, maxHoldBars);
+        if (!trade) return;
+        trade.pattern  = pattern;
+        trade.levelRef = sig.levelRef;
+        trade.breakPct = sig.breakPct;
         trades.push(trade);
         cap += trade.pnl;
       });
@@ -824,6 +931,211 @@ function scanFalseBreakouts(candles, swings, breakoutPct = 0.002) {
         levelRef: swingLow[i],
         breakPct: +((1 - c.low / swingLow[i]) * 100).toFixed(3),
       });
+      lastSigIdx = i;
+    }
+  }
+  return signals;
+}
+
+// ============================================
+// MACD INDICATOR
+// ============================================
+/**
+ * calcMACD(candles, fast, slow, signal)
+ * Trả về: { macd[], signal[], hist[] }
+ *   macd   = EMA(fast) - EMA(slow)
+ *   signal = EMA(9) của MACD
+ *   hist   = macd - signal
+ */
+function calcMACD(candles, fast = 12, slow = 26, sigPeriod = 9) {
+  // Tính EMA nhanh và chậm trực tiếp từ closes
+  const closes = candles.map(c => c.close);
+  function ema(arr, period) {
+    const k = 2 / (period + 1);
+    const out = new Array(arr.length).fill(null);
+    let prev = null;
+    for (let i = 0; i < arr.length; i++) {
+      if (i < period - 1) continue;
+      if (prev === null) {
+        prev = arr.slice(0, period).reduce((a, v) => a + v, 0) / period;
+        out[i] = prev; continue;
+      }
+      prev = arr[i] * k + prev * (1 - k);
+      out[i] = prev;
+    }
+    return out;
+  }
+  const fastEMA = ema(closes, fast);
+  const slowEMA = ema(closes, slow);
+
+  const macdLine = closes.map((_, i) =>
+    (fastEMA[i] !== null && slowEMA[i] !== null) ? fastEMA[i] - slowEMA[i] : null
+  );
+
+  // Signal line = EMA(sigPeriod) of MACD values (skip nulls)
+  const macdVals = macdLine.filter(v => v !== null);
+  const signalRaw = ema(macdVals, sigPeriod);
+  // Map signal back onto original indices
+  const signalLine = new Array(closes.length).fill(null);
+  let macdIdx = 0;
+  for (let i = 0; i < closes.length; i++) {
+    if (macdLine[i] !== null) {
+      signalLine[i] = signalRaw[macdIdx++] ?? null;
+    }
+  }
+
+  const hist = closes.map((_, i) =>
+    (macdLine[i] !== null && signalLine[i] !== null) ? macdLine[i] - signalLine[i] : null
+  );
+
+  return { macd: macdLine, signal: signalLine, hist };
+}
+
+// ============================================
+// SCAN MACD CROSSOVER SIGNALS
+// ============================================
+/**
+ * Bull: MACD cắt lên trên signal + histogram vừa đổi sang dương
+ * Bear: MACD cắt xuống dưới signal + histogram vừa đổi sang âm
+ * Cooldown 3 nến
+ */
+function scanMACDSignals(candles, macdData) {
+  const { macd, signal, hist } = macdData;
+  const signals = [];
+  let lastSigIdx = -5;
+  for (let i = 1; i < candles.length - 1; i++) {
+    if (macd[i] === null || signal[i] === null) continue;
+    if (macd[i-1] === null || signal[i-1] === null) continue;
+    if (i - lastSigIdx < 3) continue;
+
+    const crossUp   = macd[i-1] < signal[i-1] && macd[i] >= signal[i];
+    const crossDown = macd[i-1] > signal[i-1] && macd[i] <= signal[i];
+
+    if (crossUp) {
+      signals.push({ index: i, type: 'bull', macdVal: macd[i], histVal: hist[i] });
+      lastSigIdx = i;
+    } else if (crossDown) {
+      signals.push({ index: i, type: 'bear', macdVal: macd[i], histVal: hist[i] });
+      lastSigIdx = i;
+    }
+  }
+  return signals;
+}
+
+// ============================================
+// SUPERTREND INDICATOR
+// ============================================
+/**
+ * Supertrend dựa trên ATR:
+ *   Basic Upper = midpoint + multiplier × ATR
+ *   Basic Lower = midpoint - multiplier × ATR
+ * Band tightens khi giá confirm xu hướng
+ * direction: 1 = bullish (giá trên lower band), -1 = bearish (giá dưới upper band)
+ */
+function calcSupertrend(candles, atrPeriod = 10, multiplier = 3) {
+  const n = candles.length;
+  const atr   = new Array(n).fill(null);
+  const upper = new Array(n).fill(null);
+  const lower = new Array(n).fill(null);
+  const st    = new Array(n).fill(null);
+  const dir   = new Array(n).fill(null); // 1=bull, -1=bear
+
+  // Compute Wilder ATR
+  let sumTR = 0;
+  for (let i = 1; i <= atrPeriod && i < n; i++) {
+    const c = candles[i], p = candles[i-1];
+    sumTR += Math.max(c.high - c.low, Math.abs(c.high - p.close), Math.abs(c.low - p.close));
+  }
+  if (atrPeriod < n) atr[atrPeriod] = sumTR / atrPeriod;
+  for (let i = atrPeriod + 1; i < n; i++) {
+    const c = candles[i], p = candles[i-1];
+    const tr = Math.max(c.high - c.low, Math.abs(c.high - p.close), Math.abs(c.low - p.close));
+    atr[i] = (atr[i-1] * (atrPeriod - 1) + tr) / atrPeriod;
+  }
+
+  for (let i = atrPeriod; i < n; i++) {
+    const mid  = (candles[i].high + candles[i].low) / 2;
+    const band = multiplier * atr[i];
+    let bUp = mid + band;
+    let bLo = mid - band;
+
+    // Adjust bands (prevent widening into prior trend)
+    if (i > atrPeriod) {
+      if (upper[i-1] !== null) bUp = (bUp < upper[i-1] || candles[i-1].close > upper[i-1]) ? bUp : upper[i-1];
+      if (lower[i-1] !== null) bLo = (bLo > lower[i-1] || candles[i-1].close < lower[i-1]) ? bLo : lower[i-1];
+    }
+    upper[i] = bUp;
+    lower[i] = bLo;
+
+    // Direction
+    if (i === atrPeriod) {
+      dir[i] = candles[i].close > mid ? 1 : -1;
+      st[i]  = dir[i] === 1 ? bLo : bUp;
+    } else {
+      const prevDir = dir[i-1];
+      if (prevDir === -1 && candles[i].close > upper[i]) {
+        dir[i] = 1; st[i] = bLo;
+      } else if (prevDir === 1 && candles[i].close < lower[i]) {
+        dir[i] = -1; st[i] = bUp;
+      } else {
+        dir[i] = prevDir;
+        st[i]  = prevDir === 1 ? bLo : bUp;
+      }
+    }
+  }
+
+  return { st, dir, upper, lower };
+}
+
+// ============================================
+// SCAN SUPERTREND SIGNALS
+// ============================================
+/**
+ * Bull: direction đổi từ -1 → 1 (giá vượt upper band → trend flip lên)
+ * Bear: direction đổi từ 1 → -1 (giá rớt dưới lower band → trend flip xuống)
+ */
+function scanSupertrendSignals(candles, stData) {
+  const { dir } = stData;
+  const signals = [];
+  for (let i = 1; i < candles.length - 1; i++) {
+    if (dir[i] === null || dir[i-1] === null) continue;
+    if (dir[i-1] === -1 && dir[i] === 1) {
+      signals.push({ index: i, type: 'bull', stVal: stData.st[i] });
+    } else if (dir[i-1] === 1 && dir[i] === -1) {
+      signals.push({ index: i, type: 'bear', stVal: stData.st[i] });
+    }
+  }
+  return signals;
+}
+
+// ============================================
+// SCAN DONCHIAN BREAKOUT SIGNALS
+// ============================================
+/**
+ * Đây là breakout THẬT (ngược với Fakeout):
+ * Bull: close > N-bar high (breakout lên → LONG trend)
+ * Bear: close < N-bar low  (breakout xuống → SHORT trend)
+ * Cooldown 5 nến + price phải vượt qua level đủ mạnh (closePct%)
+ */
+function scanDonchianBreakouts(candles, swings, closePct = 0.001) {
+  const { swingHigh, swingLow } = swings;
+  const signals = [];
+  let lastSigIdx = -10;
+  for (let i = 1; i < candles.length - 1; i++) {
+    if (!swingHigh[i] || !swingLow[i]) continue;
+    if (i - lastSigIdx < 5) continue;
+    const c = candles[i];
+
+    // Real Bull Breakout: close vượt N-bar high
+    if (c.close > swingHigh[i] * (1 + closePct)) {
+      signals.push({ index: i, type: 'bull', levelRef: swingHigh[i],
+        breakPct: +((c.close / swingHigh[i] - 1) * 100).toFixed(3) });
+      lastSigIdx = i;
+    }
+    // Real Bear Breakout: close thủng N-bar low
+    else if (c.close < swingLow[i] * (1 - closePct)) {
+      signals.push({ index: i, type: 'bear', levelRef: swingLow[i],
+        breakPct: +((1 - c.close / swingLow[i]) * 100).toFixed(3) });
       lastSigIdx = i;
     }
   }
@@ -2551,7 +2863,11 @@ function switchStrategy(strategyId, tabEl) {
   }
 
   // Update equity curve legend visibility
-  const legends = { ema_crossover: 'legEMA', rsi_reversal: 'legRSI', bb_bounce: 'legBB', false_breakout: 'legFB' };
+  const legends = {
+    ema_crossover: 'legEMA', rsi_reversal: 'legRSI', bb_bounce: 'legBB',
+    false_breakout: 'legFB', macd_crossover: 'legMACD',
+    supertrend: 'legST', donchian_breakout: 'legDC',
+  };
   Object.values(legends).forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = 'none';
