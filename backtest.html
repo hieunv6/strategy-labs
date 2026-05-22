@@ -38,6 +38,23 @@
   </header>
 
   <!-- Settings Panel -->
+  <!-- Strategy Tab Bar -->
+  <div class="strategy-tab-bar" id="stratTabBar">
+    <button class="strat-tab active" data-strategy-id="ema_crossover" onclick="switchStrategy('ema_crossover', this)">
+      <span class="strat-tab-icon">📈</span>
+      <span>EMA 20/50</span>
+    </button>
+    <button class="strat-tab" data-strategy-id="rsi_reversal" onclick="switchStrategy('rsi_reversal', this)">
+      <span class="strat-tab-icon">🔄</span>
+      <span>RSI Reversal</span>
+    </button>
+    <button class="strat-tab" data-strategy-id="bb_bounce" onclick="switchStrategy('bb_bounce', this)">
+      <span class="strat-tab-icon">📊</span>
+      <span>Bollinger Bands</span>
+    </button>
+    <div class="strat-tab-desc" id="stratTabDesc">EMA 20 cắt EMA 50 + Retest + Mô hình nến đảo chiều</div>
+  </div>
+
   <div class="bt-settings-bar">
     <div class="bt-settings-inner">
 
@@ -212,6 +229,49 @@
       <div class="loading-dot" id="loadingDot"></div>
     </div>
 
+    <!-- Strategy-specific param panels -->
+    <div class="strategy-params-bar" id="stratParamsBar">
+      <!-- EMA Crossover params -->
+      <div id="params-ema_crossover" class="strat-params-panel active">
+        <div class="setting-group">
+          <label class="setting-label">Fast EMA</label>
+          <input id="s_fastEMA" class="ctrl-input" type="number" value="20" min="5" max="50" style="width:64px" />
+        </div>
+        <div class="setting-group">
+          <label class="setting-label">Slow EMA</label>
+          <input id="s_slowEMA" class="ctrl-input" type="number" value="50" min="10" max="200" style="width:64px" />
+        </div>
+      </div>
+
+      <!-- RSI Reversal params -->
+      <div id="params-rsi_reversal" class="strat-params-panel">
+        <div class="setting-group">
+          <label class="setting-label">RSI Period</label>
+          <input id="s_rsiPeriod" class="ctrl-input" type="number" value="14" min="2" max="50" style="width:64px" />
+        </div>
+        <div class="setting-group">
+          <label class="setting-label">Oversold</label>
+          <input id="s_oversold" class="ctrl-input" type="number" value="30" min="10" max="45" style="width:64px" />
+        </div>
+        <div class="setting-group">
+          <label class="setting-label">Overbought</label>
+          <input id="s_overbought" class="ctrl-input" type="number" value="70" min="55" max="90" style="width:64px" />
+        </div>
+      </div>
+
+      <!-- Bollinger Bands params -->
+      <div id="params-bb_bounce" class="strat-params-panel">
+        <div class="setting-group">
+          <label class="setting-label">BB Period</label>
+          <input id="s_bbPeriod" class="ctrl-input" type="number" value="20" min="5" max="50" style="width:64px" />
+        </div>
+        <div class="setting-group">
+          <label class="setting-label">Std Dev</label>
+          <input id="s_bbStdDev" class="ctrl-input" type="number" value="2" min="1" max="4" step="0.5" style="width:64px" />
+        </div>
+      </div>
+    </div>
+
     <!-- Portfolio coins -->
     <div id="portfolioCoinsWrap" class="portfolio-coins-bar" style="display:none">
       <div class="portfolio-controls">
@@ -325,6 +385,9 @@
     <div class="bt-candle-info"><span id="btCandleCount"></span></div>
   </div>
 
+  <!-- Run Badge Bar (hiện khi có ≥ 2 chiến lược đã chạy) -->
+  <div class="run-badge-bar" id="runBadgeBar" style="display:none"></div>
+
   <!-- Main Content -->
   <main class="bt-main" id="btMain" style="display:none">
 
@@ -335,6 +398,9 @@
         <div class="equity-legend">
           <span class="eq-leg win">▲ WIN</span>
           <span class="eq-leg loss">▼ LOSS</span>
+          <span class="eq-leg" style="color:#00f5a0;font-size:10px" id="legEMA">— 📈 EMA</span>
+          <span class="eq-leg" style="color:#a855f7;font-size:10px;display:none" id="legRSI">— 🔄 RSI</span>
+          <span class="eq-leg" style="color:#f97316;font-size:10px;display:none" id="legBB">— 📊 BB</span>
           <span class="eq-leg" style="color:orange;font-size:10px">- - B&amp;H</span>
         </div>
       </div>
@@ -395,6 +461,9 @@
         </table>
       </div>
     </div>
+
+    <!-- Strategy Comparison (hiện khi có ≥ 2 runs) -->
+    <div class="bt-section" id="stratCompareSection" style="display:none"></div>
 
     <!-- Buy & Hold Comparison -->
     <div class="bt-section" id="bhCompareSection" style="display:none"></div>

@@ -2,7 +2,37 @@
 // BACKTEST ENGINE — EMA 20/50 + ATR SL + Portfolio
 // ===================================================
 
-const BT = { trades: [], loading: false, mode: 'single' };
+const BT = {
+  trades: [],      // Legacy compat (current run)
+  runs:   [],      // Multi-run: [{ id, strategyId, strategyName, color, trades, metrics, params, symbol, interval }]
+  activeRunId: null,
+  loading: false,
+  mode: 'single',
+  bhData: null,
+};
+
+// Get currently active strategy from tab bar
+function getActiveStrategy() {
+  const active = document.querySelector('.strat-tab.active');
+  return active?.dataset?.strategyId || 'ema_crossover';
+}
+
+// Get strategy-specific params from DOM
+function getStrategyParams(strategyId) {
+  const extra = {};
+  if (strategyId === 'ema_crossover') {
+    extra.fastEMA = parseInt(document.getElementById('s_fastEMA')?.value || 20);
+    extra.slowEMA = parseInt(document.getElementById('s_slowEMA')?.value || 50);
+  } else if (strategyId === 'rsi_reversal') {
+    extra.rsiPeriod  = parseInt(document.getElementById('s_rsiPeriod')?.value  || 14);
+    extra.oversold   = parseFloat(document.getElementById('s_oversold')?.value  || 30);
+    extra.overbought = parseFloat(document.getElementById('s_overbought')?.value || 70);
+  } else if (strategyId === 'bb_bounce') {
+    extra.bbPeriod = parseInt(document.getElementById('s_bbPeriod')?.value   || 20);
+    extra.bbStdDev = parseFloat(document.getElementById('s_bbStdDev')?.value || 2);
+  }
+  return extra;
+}
 
 const C = {
   green:'#00f5a0', red:'#ff3f60',
@@ -66,6 +96,109 @@ const PATTERN_DESC = {
   eveningStar:    'Evening Star: xanh lớn → Doji → đỏ lớn. Đảo chiều giảm rất mạnh.',
   threeWhite:     '3 White Soldiers: 3 nến xanh tăng liên tiếp, mỗi nến mở cao hơn. Đà tăng mạnh.',
   threeBlack:     '3 Black Crows: 3 nến đỏ giảm liên tiếp, mỗi nến mở thấp hơn. Đà giảm mạnh.',
+};
+
+// ============================================
+// STRATEGY REGISTRY — Plugin Architecture
+// Each strategy: { id, name, icon, desc, defaultParams, color, run(candles, params)→trades[] }
+// ============================================
+const STRATEGY_REGISTRY = {
+  ema_crossover: {
+    id: 'ema_crossover',
+    name: 'EMA 20/50',
+    icon: '📈',
+    color: '#00f5a0',
+    desc: 'EMA 20 cắt EMA 50 + Retest + Mô hình nến đảo chiều',
+    defaultParams: { fastEMA: 20, slowEMA: 50 },
+    run(candles, params) {
+      const { slMode, slValue, atrPeriod, rrRatio, capital, sizeType, sizeValue,
+              pattern: filterPattern, feeRate, maxHoldBars,
+              fastEMA = 20, slowEMA = 50 } = params;
+      const ema20  = calcEMA(candles, fastEMA);
+      const ema50  = calcEMA(candles, slowEMA);
+      const atrArr = slMode === 'atr' ? calcATR(candles, atrPeriod) : null;
+      const cxs    = scanCrossovers(ema20, ema50);
+      const trades = []; let cap = capital;
+      cxs.forEach((cx, ci) => {
+        const nextCx  = cxs[ci + 1];
+        const rt      = findRetest(candles, ema20, ema50, cx.index, cx.type, nextCx?.index);
+        if (!rt) return;
+        const pattern = detectPattern(candles, rt.index, cx.type);
+        if (!pattern) return;
+        if (filterPattern && filterPattern !== 'all' && pattern !== filterPattern) return;
+        const sigIdx  = Math.min(rt.index + 1, candles.length - 1);
+        const trade   = simulateTrade(candles, sigIdx, cx.type, slMode, slValue, atrArr, rrRatio, cap, sizeType, sizeValue, feeRate, maxHoldBars);
+        if (!trade) return;
+        trade.pattern = pattern;
+        trades.push(trade);
+        cap += trade.pnl;
+      });
+      return trades;
+    }
+  },
+
+  rsi_reversal: {
+    id: 'rsi_reversal',
+    name: 'RSI Reversal',
+    icon: '🔄',
+    color: '#a855f7',
+    desc: 'RSI oversold (<30) bounce hoặc overbought (>70) rejection với xác nhận nến',
+    defaultParams: { rsiPeriod: 14, oversold: 30, overbought: 70 },
+    run(candles, params) {
+      const { slMode, slValue, atrPeriod, rrRatio, capital, sizeType, sizeValue,
+              feeRate, maxHoldBars, pattern: filterPattern,
+              rsiPeriod = 14, oversold = 30, overbought = 70 } = params;
+      const rsi    = calcRSI(candles, rsiPeriod);
+      const atrArr = slMode === 'atr' ? calcATR(candles, atrPeriod) : null;
+      const sigs   = scanRSISignals(candles, rsi, oversold, overbought);
+      const trades = []; let cap = capital;
+      sigs.forEach(sig => {
+        // Xác nhận nến đảo chiều tại điểm tín hiệu
+        const pattern = detectPattern(candles, sig.index, sig.type);
+        if (!pattern) return;
+        if (filterPattern && filterPattern !== 'all' && pattern !== filterPattern) return;
+        const sigIdx = Math.min(sig.index + 1, candles.length - 1);
+        const trade  = simulateTrade(candles, sigIdx, sig.type, slMode, slValue, atrArr, rrRatio, cap, sizeType, sizeValue, feeRate, maxHoldBars);
+        if (!trade) return;
+        trade.pattern = pattern;
+        trade.rsiAtEntry = rsi[sig.index];
+        trades.push(trade);
+        cap += trade.pnl;
+      });
+      return trades;
+    }
+  },
+
+  bb_bounce: {
+    id: 'bb_bounce',
+    name: 'Bollinger Bands',
+    icon: '📊',
+    color: '#f97316',
+    desc: 'Giá bounce từ BB lower/upper trở về trong band với xác nhận nến',
+    defaultParams: { bbPeriod: 20, bbStdDev: 2 },
+    run(candles, params) {
+      const { slMode, slValue, atrPeriod, rrRatio, capital, sizeType, sizeValue,
+              feeRate, maxHoldBars, pattern: filterPattern,
+              bbPeriod = 20, bbStdDev = 2 } = params;
+      const bb     = calcBB(candles, bbPeriod, bbStdDev);
+      const atrArr = slMode === 'atr' ? calcATR(candles, atrPeriod) : null;
+      const sigs   = scanBBSignals(candles, bb);
+      const trades = []; let cap = capital;
+      sigs.forEach(sig => {
+        // Tùy chọn xác nhận nến (không bắt buộc để nhiều tín hiệu hơn)
+        const pattern = detectPattern(candles, sig.index, sig.type) || (sig.type === 'bull' ? 'bullHammer' : 'shootingStar');
+        if (filterPattern && filterPattern !== 'all' && pattern !== filterPattern) return;
+        const sigIdx = Math.min(sig.index + 1, candles.length - 1);
+        const trade  = simulateTrade(candles, sigIdx, sig.type, slMode, slValue, atrArr, rrRatio, cap, sizeType, sizeValue, feeRate, maxHoldBars);
+        if (!trade) return;
+        trade.pattern = pattern;
+        trade.bbRef   = sig.bandRef;
+        trades.push(trade);
+        cap += trade.pnl;
+      });
+      return trades;
+    }
+  },
 };
 
 const INTERVAL_MS = {
@@ -464,7 +597,57 @@ function calcATR(candles, period = 14) {
 }
 
 // ============================================
-// SCAN CROSSOVERS
+// RSI (Wilder's Smoothed MA)
+// ============================================
+function calcRSI(candles, period = 14) {
+  const rsi = new Array(candles.length).fill(null);
+  if (candles.length < period + 1) return rsi;
+
+  // Seed: first avgGain / avgLoss as SMA
+  let avgGain = 0, avgLoss = 0;
+  for (let i = 1; i <= period; i++) {
+    const delta = candles[i].close - candles[i - 1].close;
+    if (delta > 0) avgGain += delta;
+    else avgLoss += Math.abs(delta);
+  }
+  avgGain /= period;
+  avgLoss /= period;
+  rsi[period] = avgLoss === 0 ? 100 : +(100 - 100 / (1 + avgGain / avgLoss)).toFixed(4);
+
+  // Wilder smoothing
+  for (let i = period + 1; i < candles.length; i++) {
+    const delta = candles[i].close - candles[i - 1].close;
+    const gain  = delta > 0 ? delta : 0;
+    const loss  = delta < 0 ? Math.abs(delta) : 0;
+    avgGain = (avgGain * (period - 1) + gain) / period;
+    avgLoss = (avgLoss * (period - 1) + loss) / period;
+    rsi[i]  = avgLoss === 0 ? 100 : +(100 - 100 / (1 + avgGain / avgLoss)).toFixed(4);
+  }
+  return rsi;
+}
+
+// ============================================
+// Bollinger Bands (SMA ± k*σ)
+// ============================================
+function calcBB(candles, period = 20, stdDev = 2) {
+  const upper = new Array(candles.length).fill(null);
+  const middle = new Array(candles.length).fill(null);
+  const lower  = new Array(candles.length).fill(null);
+
+  for (let i = period - 1; i < candles.length; i++) {
+    const slice = candles.slice(i - period + 1, i + 1).map(c => c.close);
+    const sma   = slice.reduce((a, b) => a + b, 0) / period;
+    const variance = slice.reduce((a, b) => a + (b - sma) ** 2, 0) / period;
+    const sd = Math.sqrt(variance);
+    middle[i] = +sma.toFixed(8);
+    upper[i]  = +(sma + stdDev * sd).toFixed(8);
+    lower[i]  = +(sma - stdDev * sd).toFixed(8);
+  }
+  return { upper, middle, lower };
+}
+
+// ============================================
+// SCAN CROSSOVERS (EMA)
 // ============================================
 function scanCrossovers(ema20, ema50) {
   const cx = [];
@@ -476,6 +659,62 @@ function scanCrossovers(ema20, ema50) {
   }
   return cx;
 }
+
+// ============================================
+// SCAN RSI SIGNALS
+// ============================================
+/**
+ * Tìm tín hiệu RSI: cross oversold từ dưới lên (bull), cross overbought từ trên xuống (bear)
+ * Min distance: 3 bars giữa 2 tín hiệu cùng chiều để tránh noise
+ */
+function scanRSISignals(candles, rsi, oversold = 30, overbought = 70) {
+  const signals = [];
+  let lastSigIdx = -10;
+  for (let i = 1; i < rsi.length - 1; i++) {
+    if (rsi[i] === null || rsi[i-1] === null) continue;
+    if (i - lastSigIdx < 3) continue;
+    // Bull: RSI vừa cross lên từ dưới oversold
+    if (rsi[i-1] <= oversold && rsi[i] > oversold) {
+      signals.push({ index: i, type: 'bull' });
+      lastSigIdx = i;
+    }
+    // Bear: RSI vừa cross xuống từ trên overbought
+    else if (rsi[i-1] >= overbought && rsi[i] < overbought) {
+      signals.push({ index: i, type: 'bear' });
+      lastSigIdx = i;
+    }
+  }
+  return signals;
+}
+
+// ============================================
+// SCAN BOLLINGER BAND SIGNALS
+// ============================================
+/**
+ * Tín hiệu: Close chạm hoặc vượt band rồi nến kế tiếp close trở về trong band (bounce)
+ * Bull: close < lower → nến sau close > lower (bounce up từ lower band)
+ * Bear: close > upper → nến sau close < upper (rejection từ upper band)
+ */
+function scanBBSignals(candles, bb) {
+  const signals = [];
+  let lastSigIdx = -5;
+  for (let i = 1; i < candles.length - 1; i++) {
+    if (!bb.lower[i] || !bb.upper[i] || !bb.lower[i-1] || !bb.upper[i-1]) continue;
+    if (i - lastSigIdx < 3) continue;
+    // Bull bounce: nến trước close < lower, nến hiện tại close > lower
+    if (candles[i-1].close <= bb.lower[i-1] && candles[i].close > bb.lower[i]) {
+      signals.push({ index: i, type: 'bull', bandRef: bb.lower[i] });
+      lastSigIdx = i;
+    }
+    // Bear rejection: nến trước close > upper, nến hiện tại close < upper
+    else if (candles[i-1].close >= bb.upper[i-1] && candles[i].close < bb.upper[i]) {
+      signals.push({ index: i, type: 'bear', bandRef: bb.upper[i] });
+      lastSigIdx = i;
+    }
+  }
+  return signals;
+}
+
 
 // ============================================
 // RETEST
@@ -835,31 +1074,12 @@ function simulateTrade(candles, sigIdx, crossType, slMode, slValue, atrArr, rrRa
 }
 
 // ============================================
-// RUN SINGLE SYMBOL
+// RUN SINGLE SYMBOL — Strategy Dispatcher
 // ============================================
 function runSymbolBacktest(candles, params) {
-  const { slMode, slValue, atrPeriod, rrRatio, capital, sizeType, sizeValue, pattern: filterPattern, feeRate, maxHoldBars } = params;
-  const ema20  = calcEMA(candles, 20);
-  const ema50  = calcEMA(candles, 50);
-  const atrArr = slMode === 'atr' ? calcATR(candles, atrPeriod) : null;
-  const cxs    = scanCrossovers(ema20, ema50);
-
-  const trades = []; let cap = capital;
-  cxs.forEach((cx, ci) => {
-    const nextCx  = cxs[ci + 1];
-    const rt      = findRetest(candles, ema20, ema50, cx.index, cx.type, nextCx?.index);
-    if (!rt) return;
-    const pattern = detectPattern(candles, rt.index, cx.type);
-    if (!pattern) return;
-    if (filterPattern && filterPattern !== 'all' && pattern !== filterPattern) return;
-    const sigIdx  = Math.min(rt.index + 1, candles.length - 1);
-    const trade   = simulateTrade(candles, sigIdx, cx.type, slMode, slValue, atrArr, rrRatio, cap, sizeType, sizeValue, feeRate, maxHoldBars);
-    if (!trade) return;
-    trade.pattern = pattern;
-    trades.push(trade);
-    cap += trade.pnl;
-  });
-  return trades;
+  const strategyId = params.strategy || 'ema_crossover';
+  const strategy   = STRATEGY_REGISTRY[strategyId] || STRATEGY_REGISTRY.ema_crossover;
+  return strategy.run(candles, params);
 }
 
 // ============================================
@@ -1733,7 +1953,13 @@ async function runBacktest() {
   const feeRate   = parseFloat(document.getElementById('btFeeRate')?.value || 0) / 100; // convert % to decimal
   const maxHoldBars = parseInt(document.getElementById('btMaxHold')?.value || 80);
 
-  const params = { slMode, slValue, atrPeriod, rrRatio, capital, sizeType, sizeValue, pattern: selectedPattern, feeRate, maxHoldBars };
+  // Strategy selection
+  const strategyId     = getActiveStrategy();
+  const strategyExtra  = getStrategyParams(strategyId);
+
+  const params = { slMode, slValue, atrPeriod, rrRatio, capital, sizeType, sizeValue,
+                   pattern: selectedPattern, feeRate, maxHoldBars,
+                   strategy: strategyId, ...strategyExtra };
 
   // Determine list of symbols to test
   let symbolsToTest = [];
@@ -1900,16 +2126,38 @@ async function runBacktest() {
       console.warn('B&H calc failed:', e);
     }
 
+    // ── STORE RUN IN BT.runs ─────────────────────────
+    const stratId   = params.strategy || 'ema_crossover';
+    const stratInfo = STRATEGY_REGISTRY[stratId];
+    const runId     = Date.now();
+    const runLabel  = BT.mode === 'portfolio'
+      ? `${Object.keys(perSymbol).length} coin`
+      : Object.keys(perSymbol)[0]?.replace('USDT','/USDT');
+
+    // Remove duplicate run cho cùng strategy (giữ run mới nhất)
+    BT.runs = BT.runs.filter(r => r.strategyId !== stratId);
+    BT.runs.push({
+      id: runId, strategyId: stratId,
+      strategyName: stratInfo?.name || stratId,
+      icon: stratInfo?.icon || '📈',
+      color: stratInfo?.color || '#00f5a0',
+      trades: allTrades, metrics: m,
+      params, symbol: runLabel, interval,
+      startDateStr, endDateStr, capital,
+      bhData: BT.bhData,
+    });
+    BT.activeRunId = runId;
+
     // ── UPDATE UI ───────────────────────────────────
-    const hasSymbol = Object.keys(perSymbol).length > 0;
     document.getElementById('btCandleCount').textContent =
-      `${allTrades.length} lệnh · ${BT.mode === 'portfolio' ? Object.keys(perSymbol).length + ' coin' : Object.keys(perSymbol)[0]?.replace('USDT','/USDT')} · ${interval} · ${startDateStr} → ${endDateStr}`;
+      `${stratInfo?.icon || ''} ${stratInfo?.name || stratId} · ${allTrades.length} lệnh · ${runLabel} · ${interval} · ${startDateStr} → ${endDateStr}`;
 
     document.getElementById('statsBar').style.display = 'block';
     document.getElementById('btMain').style.display   = 'flex';
     document.getElementById('btEmpty').style.display  = 'none';
 
     renderStats(m, capital);
+    updateRunBadges();
 
     setTimeout(() => {
       renderEquityCurve(m.equityCurve, allTrades, BT.bhData);
@@ -1919,11 +2167,12 @@ async function runBacktest() {
       renderSymbolBreakdown(perSymbol);
       renderTradeTable(allTrades);
       renderBHComparison(m, BT.bhData, capital);
+      if (BT.runs.length >= 2) renderStrategyComparison();
       hideProgress();
     }, 50);
 
     const pnlStr = m.totalPnL >= 0 ? `+$${m.totalPnL.toFixed(2)}` : `-$${Math.abs(m.totalPnL).toFixed(2)}`;
-    showToast(`✅ ${allTrades.length} lệnh · WR ${m.winRate.toFixed(1)}% · PF ${m.profitFactor.toFixed(2)} · ${pnlStr}`);
+    showToast(`✅ ${stratInfo?.icon || ''} ${stratInfo?.name || stratId}: ${allTrades.length} lệnh · WR ${m.winRate.toFixed(1)}% · ${pnlStr}`);
 
   } catch(err) {
     console.error(err);
@@ -1933,6 +2182,268 @@ async function runBacktest() {
     setLoading(false);
     BT.loading = false;
   }
+}
+
+// ============================================
+// UPDATE RUN BADGES (tab pills)
+// ============================================
+function updateRunBadges() {
+  const container = document.getElementById('runBadgeBar');
+  if (!container) return;
+  container.innerHTML = BT.runs.map(r => {
+    const pnl = r.metrics?.totalPnL || 0;
+    const pnlStr = pnl >= 0 ? `+${pnl.toFixed(0)}` : pnl.toFixed(0);
+    const pnlCls = pnl >= 0 ? 'pos' : 'neg';
+    const isActive = r.id === BT.activeRunId ? 'active' : '';
+    return `<div class="run-badge ${isActive}" data-run-id="${r.id}" onclick="switchRun(${r.id})" style="--badge-color:${r.color}">
+      <span>${r.icon} ${r.strategyName}</span>
+      <span class="run-badge-pnl ${pnlCls}">$${pnlStr}</span>
+      <span class="run-badge-close" onclick="event.stopPropagation();removeRun(${r.id})">×</span>
+    </div>`;
+  }).join('');
+  container.style.display = BT.runs.length >= 2 ? 'flex' : 'none';
+}
+
+// Switch active run (xem kết quả của run khác)
+function switchRun(runId) {
+  const run = BT.runs.find(r => r.id === runId);
+  if (!run) return;
+  BT.activeRunId = runId;
+  BT.trades = run.trades;
+  BT.bhData = run.bhData;
+  const m = run.metrics;
+  const patternStats = calcPatternStats(run.trades);
+  renderStats(m, run.capital);
+  renderEquityCurve(m.equityCurve, run.trades, run.bhData);
+  renderMonthlyHeatmap(m.monthly);
+  renderDistribution(run.trades, m);
+  renderPatternTable(patternStats);
+  renderTradeTable(run.trades);
+  renderBHComparison(m, run.bhData, run.capital);
+  if (BT.runs.length >= 2) renderStrategyComparison();
+  updateRunBadges();
+  document.getElementById('btCandleCount').textContent =
+    `${run.icon} ${run.strategyName} · ${run.trades.length} lệnh · ${run.symbol} · ${run.interval} · ${run.startDateStr} → ${run.endDateStr}`;
+}
+
+// Remove a run
+function removeRun(runId) {
+  BT.runs = BT.runs.filter(r => r.id !== runId);
+  if (BT.activeRunId === runId && BT.runs.length > 0) {
+    switchRun(BT.runs[BT.runs.length - 1].id);
+  }
+  updateRunBadges();
+  const cmpSection = document.getElementById('stratCompareSection');
+  if (cmpSection) cmpSection.style.display = BT.runs.length >= 2 ? 'block' : 'none';
+}
+
+// ============================================
+// RENDER STRATEGY COMPARISON TABLE
+// ============================================
+function renderStrategyComparison() {
+  const section = document.getElementById('stratCompareSection');
+  if (!section) return;
+  section.style.display = 'block';
+
+  const runs = BT.runs;
+  if (runs.length < 2) { section.style.display = 'none'; return; }
+
+  const metrics = [
+    { key: 'totalPnL',       label: '💰 Tổng PnL ($)',    fmt: v => (v>=0?'+':'')+v.toFixed(2), higher: true },
+    { key: 'winRate',        label: '🎯 Win Rate',         fmt: v => v.toFixed(1)+'%',           higher: true },
+    { key: 'profitFactor',   label: '⚡ Profit Factor',    fmt: v => v===999?'∞':v.toFixed(2),   higher: true },
+    { key: 'cagr',           label: '📅 CAGR/Năm',         fmt: v => (v>=0?'+':'')+v+'%',        higher: true },
+    { key: 'maxDrawdown',    label: '📉 Max Drawdown',      fmt: v => '-'+v.toFixed(1)+'%',       higher: false },
+    { key: 'sharpe',         label: '⚖️ Sharpe',           fmt: v => v,                          higher: true },
+  ];
+
+  // Tính điểm champion cho từng tiêu chí
+  const champions = metrics.map(metric => {
+    const vals = runs.map(r => +r.metrics[metric.key]);
+    const best = metric.higher ? Math.max(...vals) : Math.min(...vals);
+    return runs.findIndex(r => +r.metrics[metric.key] === best);
+  });
+
+  const winCounts = runs.map(() => 0);
+  champions.forEach(ci => { if (ci >= 0) winCounts[ci]++; });
+  const overallWinner = winCounts.indexOf(Math.max(...winCounts));
+
+  const headerCells = runs.map(r =>
+    `<th style="color:${r.color};text-align:center">${r.icon} ${r.strategyName}</th>`
+  ).join('');
+
+  const rows = metrics.map((metric, mi) => {
+    const cells = runs.map((r, ri) => {
+      const val = r.metrics[metric.key];
+      const cls = ri === champions[mi] ? 'pnl-pos' : '';
+      const trophy = ri === champions[mi] ? ' 🏆' : '';
+      return `<td class="${cls}" style="text-align:center;font-weight:${ri===champions[mi]?700:400}">${metric.fmt(val)}${trophy}</td>`;
+    }).join('');
+    return `<tr><td style="color:var(--text-dim)">${metric.label}</td>${cells}</tr>`;
+  }).join('');
+
+  // Số lệnh row
+  const tradesRow = `<tr>
+    <td style="color:var(--text-dim)">📋 Số Lệnh</td>
+    ${runs.map(r => `<td style="text-align:center;color:var(--text-muted)">${r.trades.length}</td>`).join('')}
+  </tr>`;
+
+  // Verdict
+  const winner = runs[overallWinner];
+  const verdict = `<div style="text-align:center;padding:12px;background:var(--bg4);border-radius:var(--radius);margin-top:12px;font-weight:700;color:${winner.color}">
+    🏆 Chiến lược tốt nhất: ${winner.icon} ${winner.strategyName} (${winCounts[overallWinner]}/${metrics.length} tiêu chí)
+  </div>`;
+
+  // Equity overlay với nhiều màu
+  const equityCanvasNote = `<div style="font-size:11px;color:var(--text-muted);padding:4px 0 8px">
+    ${runs.map(r => `<span style="color:${r.color};margin-right:16px">● ${r.icon} ${r.strategyName}</span>`).join('')}
+    ${BT.bhData ? `<span style="color:#f59e0b;border-bottom:2px dashed #f59e0b">● 💤 Buy &amp; Hold</span>` : ''}
+  </div>`;
+
+  section.innerHTML = `
+    <div class="bt-section-header">
+      <h2 class="bt-section-title">⚡ So Sánh Chiến Lược</h2>
+      <span style="font-size:11px;color:var(--text-muted)">${runs.length} chiến lược · ${runs[0]?.symbol || ''} · ${runs[0]?.interval || ''}</span>
+    </div>
+    ${equityCanvasNote}
+    <div class="trade-table-wrap">
+      <table class="trade-table">
+        <thead><tr>
+          <th>Tiêu chí</th>${headerCells}
+        </tr></thead>
+        <tbody>${rows}${tradesRow}</tbody>
+      </table>
+    </div>
+    ${verdict}
+  `;
+
+  // Redraw equity curve với tất cả runs overlaid
+  renderMultiStrategyEquity();
+}
+
+// ============================================
+// MULTI-STRATEGY EQUITY OVERLAY
+// ============================================
+function renderMultiStrategyEquity() {
+  const canvas = document.getElementById('equityCanvas');
+  if (!canvas || !BT.runs.length) return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  const PAD = { t: 30, r: 90, b: 40, l: 70 };
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Gather all equity curves
+  const allCurves = BT.runs.map(r => ({
+    label: r.strategyName, icon: r.icon, color: r.color,
+    curve: r.metrics?.equityCurve || [],
+    capital: r.capital
+  }));
+
+  // Add B&H if available
+  const activeRun = BT.runs.find(r => r.id === BT.activeRunId) || BT.runs[0];
+  if (activeRun?.bhData?.curve) {
+    allCurves.push({
+      label: 'Buy & Hold', icon: '💤', color: '#f59e0b', dash: true,
+      curve: activeRun.bhData.curve, capital: activeRun.capital
+    });
+  }
+
+  if (!allCurves.length) return;
+
+  // Compute global min/max
+  const allVals = allCurves.flatMap(c => c.curve).filter(v => v != null && !isNaN(v));
+  if (!allVals.length) return;
+  let minV = Math.min(...allVals), maxV = Math.max(...allVals);
+  const range = maxV - minV || 1;
+  minV -= range * 0.05;
+  maxV += range * 0.05;
+
+  const cW = W - PAD.l - PAD.r;
+  const cH = H - PAD.t - PAD.b;
+
+  // Grid
+  ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = PAD.t + (cH / 4) * i;
+    ctx.beginPath(); ctx.moveTo(PAD.l, y); ctx.lineTo(PAD.l + cW, y); ctx.stroke();
+    const val = maxV - (maxV - minV) / 4 * i;
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.font = '10px JetBrains Mono, monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText('$' + val.toFixed(0), PAD.l - 6, y + 4);
+  }
+
+  // Draw each curve
+  allCurves.forEach(series => {
+    const pts = series.curve;
+    if (!pts || pts.length < 2) return;
+    ctx.beginPath();
+    ctx.strokeStyle = series.color;
+    ctx.lineWidth   = series.dash ? 1.5 : 2;
+    if (series.dash) ctx.setLineDash([6, 4]);
+    else ctx.setLineDash([]);
+    pts.forEach((v, i) => {
+      const x = PAD.l + (i / (pts.length - 1)) * cW;
+      const y = PAD.t + cH - ((v - minV) / (maxV - minV)) * cH;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Label at right edge
+    const lastV = pts[pts.length - 1];
+    const lastY = PAD.t + cH - ((lastV - minV) / (maxV - minV)) * cH;
+    const pct   = series.capital > 0 ? ((lastV - series.capital) / series.capital * 100) : 0;
+    const pctStr = (pct >= 0 ? '+' : '') + pct.toFixed(1) + '%';
+    ctx.font = 'bold 10px JetBrains Mono, monospace';
+    ctx.fillStyle = series.color;
+    ctx.textAlign = 'left';
+    ctx.fillText(series.icon + ' ' + pctStr, PAD.l + cW + 6, Math.max(PAD.t + 10, Math.min(H - PAD.b - 5, lastY)));
+  });
+}
+
+
+
+// ============================================
+// STRATEGY TAB SWITCHING
+// ============================================
+function switchStrategy(strategyId, tabEl) {
+  // Update active tab
+  document.querySelectorAll('.strat-tab').forEach(t => t.classList.remove('active'));
+  if (tabEl) tabEl.classList.add('active');
+
+  // Update description
+  const desc = STRATEGY_REGISTRY[strategyId]?.desc || '';
+  const descEl = document.getElementById('stratTabDesc');
+  if (descEl) descEl.textContent = desc;
+
+  // Toggle param panels
+  document.querySelectorAll('.strat-params-panel').forEach(p => p.classList.remove('active'));
+  const panel = document.getElementById(`params-${strategyId}`);
+  if (panel) panel.classList.add('active');
+
+  // Update strategy-specific active color on tab bar
+  const tabBar = document.getElementById('stratTabBar');
+  if (tabBar) {
+    const color = STRATEGY_REGISTRY[strategyId]?.color || 'var(--accent)';
+    tabBar.style.setProperty('--active-strat-color', color);
+    // Update active tab border color dynamically
+    document.querySelectorAll('.strat-tab.active').forEach(t => {
+      t.style.borderBottomColor = color;
+      t.style.color = color;
+    });
+  }
+
+  // Update equity curve legend visibility
+  const legends = { ema_crossover: 'legEMA', rsi_reversal: 'legRSI', bb_bounce: 'legBB' };
+  Object.values(legends).forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+  const activeLeg = document.getElementById(legends[strategyId]);
+  if (activeLeg) activeLeg.style.display = '';
 }
 
 // ============================================
