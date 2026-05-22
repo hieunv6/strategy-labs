@@ -44,6 +44,13 @@ function getStrategyParams(strategyId) {
   } else if (strategyId === 'donchian_breakout') {
     extra.dcLookback = parseInt(document.getElementById('s_dcLookback')?.value    || 20);
     extra.dcClosePct = parseFloat(document.getElementById('s_dcClosePct')?.value  || 0.1);
+  } else if (strategyId === 'turtle_trading') {
+    extra.ttSystem    = document.getElementById('s_ttSystem')?.value      || 'S1';
+    extra.ttEntry     = parseInt(document.getElementById('s_ttEntry')?.value      || 20);
+    extra.ttExit      = parseInt(document.getElementById('s_ttExit')?.value       || 10);
+    extra.ttAtrPeriod = parseInt(document.getElementById('s_ttAtrPeriod')?.value  || 20);
+    extra.ttNStop     = parseFloat(document.getElementById('s_ttNStop')?.value    || 2);
+    extra.ttWinFilter = document.getElementById('s_ttWinFilter')?.checked ?? true;
   }
   return extra;
 }
@@ -347,6 +354,100 @@ const STRATEGY_REGISTRY = {
         trades.push(trade);
         cap += trade.pnl;
       });
+      return trades;
+    }
+  },
+
+  turtle_trading: {
+    id: 'turtle_trading',
+    name: 'Turtle Trading',
+    icon: '🐢',
+    color: '#6366f1',
+    desc: 'Richard Dennis 1983 — Dual Donchian channel breakout + 2×ATR stop + Win Filter',
+    defaultParams: {
+      ttSystem: 'S1',   // 'S1' (20/10) hoặc 'S2' (55/20)
+      ttEntry: 20,      // Entry channel period
+      ttExit: 10,       // Exit channel period  
+      ttAtrPeriod: 20,  // ATR period = "N" trong nguyên bản
+      ttNStop: 2,       // SL = ttNStop × ATR(N)
+      ttWinFilter: true,// Skip entry nếu lệnh trước là WIN (System 1 rule)
+    },
+    run(candles, params) {
+      const {
+        capital, sizeType, sizeValue, feeRate, maxHoldBars,
+        ttSystem = 'S1',
+        ttEntry:    rawEntry = 20,
+        ttExit:     rawExit  = 10,
+        ttAtrPeriod = 20,
+        ttNStop     = 2,
+        ttWinFilter = true,
+      } = params;
+
+      // System presets override manual periods when preset is used
+      let entryPeriod = +rawEntry;
+      let exitPeriod  = +rawExit;
+      if (ttSystem === 'S1') { entryPeriod = 20; exitPeriod = 10; }
+      if (ttSystem === 'S2') { entryPeriod = 55; exitPeriod = 20; }
+
+      // Cần đủ dữ liệu
+      if (candles.length < entryPeriod + 5) return [];
+
+      const entryCh = calcSwingLevels(candles, entryPeriod);
+      const exitCh  = calcSwingLevels(candles, exitPeriod);
+      const atrArr  = calcATR(candles, ttAtrPeriod);
+
+      const trades   = [];
+      let cap        = capital;
+      let lastResult = null;   // 'WIN' | 'LOSS' — cho Win Filter
+      let i          = entryPeriod;
+
+      while (i < candles.length - 1) {
+        const entHigh = entryCh.swingHigh[i];
+        const entLow  = entryCh.swingLow[i];
+        const N       = atrArr[i];
+        if (!entHigh || !entLow || !N) { i++; continue; }
+
+        const c = candles[i];
+        let sigType = null;
+
+        // Entry: close breaks out of entry channel
+        if      (c.close > entHigh) sigType = 'bull';
+        else if (c.close < entLow)  sigType = 'bear';
+
+        if (!sigType) { i++; continue; }
+
+        // ── WIN FILTER (System 1 only) ──────────────────────────────────────
+        // Nguyên tắc gốc: bỏ qua tín hiệu nếu lệnh TRƯỚC đó win
+        // (để tránh nhiều lệnh liên tiếp trong cùng một xu hướng)
+        if (ttWinFilter && ttSystem === 'S1' && lastResult === 'WIN') {
+          lastResult = null; // reset — chỉ skip 1 lần
+          i++; continue;
+        }
+
+        // ── ENTRY ──────────────────────────────────────────────────────────
+        const sigIdx   = Math.min(i + 1, candles.length - 1);
+        const stopDist = ttNStop * N;  // 2×ATR theo nguyên bản
+
+        const trade = simulateTurtleTrade(
+          candles, sigIdx, sigType, stopDist, exitCh,
+          cap, sizeType, sizeValue, feeRate, maxHoldBars
+        );
+        if (!trade) { i++; continue; }
+
+        trade.pattern    = sigType === 'bull' ? 'marubozuBull' : 'marubozuBear';
+        trade.atrN       = +N.toFixed(4);
+        trade.stopDist   = +stopDist.toFixed(4);
+        trade.entryLevel = +(sigType === 'bull' ? entHigh : entLow).toFixed(4);
+        trade.exitReason = trade.exitReason;
+
+        trades.push(trade);
+        cap        += trade.pnl;
+        lastResult  = trade.result;
+
+        // Skip tới thanh cuối của lệnh (không chồng lệnh)
+        i = sigIdx + trade.holdBars + 1;
+      }
+
       return trades;
     }
   },
@@ -1140,6 +1241,96 @@ function scanDonchianBreakouts(candles, swings, closePct = 0.001) {
     }
   }
   return signals;
+}
+
+// ============================================
+// TURTLE TRADING — CUSTOM TRADE SIMULATOR
+// ============================================
+/**
+ * Khác simulateTrade() ở chỗ:
+ *  - Không dùng TP cố định: exit khi giá chạm EXIT CHANNEL (10-day low/high)
+ *  - Stop loss vẫn là 2×N (ATR)
+ *  - exitReason: 'SL' | 'EXIT_CHANNEL' | 'TIMEOUT'
+ *
+ * @param {Object[]} candles
+ * @param {number}   sigIdx      - index của nến entry (đã +1 từ signal)
+ * @param {string}   type        - 'bull' | 'bear'
+ * @param {number}   stopDist    - khoảng cách SL = ttN × ATR
+ * @param {Object}   exitCh      - { swingHigh, swingLow } — exit channel
+ * @param {number}   capital     - vốn hiện tại
+ * @param {string}   sizeType    - 'risk' | 'percent' | 'fixed'
+ * @param {number}   sizeValue   - % hoặc USD
+ * @param {number}   feeRate     - 0–1 (0.001 = 0.1%)
+ * @param {number}   maxHoldBars - timeout
+ */
+function simulateTurtleTrade(candles, sigIdx, type, stopDist, exitCh, capital, sizeType, sizeValue, feeRate, maxHoldBars) {
+  const entry = candles[sigIdx]?.close;
+  if (!entry || stopDist <= 0) return null;
+
+  const isBuy   = type === 'bull';
+  const sl      = isBuy ? entry - stopDist : entry + stopDist;
+  const fee     = feeRate || 0;
+  const maxBars = maxHoldBars || 300;
+
+  // Position sizing (same logic as simulateTrade)
+  let posSize;
+  if (sizeType === 'percent') {
+    posSize = (capital * (sizeValue / 100)) / entry;
+  } else if (sizeType === 'fixed') {
+    posSize = sizeValue / entry;
+  } else { // risk %
+    posSize = (capital * (sizeValue / 100)) / stopDist;
+  }
+  let posValue = posSize * entry;
+  if (posValue > capital && capital > 0) { posValue = capital; posSize = capital / entry; }
+
+  for (let i = sigIdx + 1; i < Math.min(sigIdx + maxBars, candles.length); i++) {
+    const c       = candles[i];
+    const exitLow  = exitCh.swingLow[i];
+    const exitHigh = exitCh.swingHigh[i];
+
+    const hitSL = isBuy ? c.low <= sl : c.high >= sl;
+    const hitExit = isBuy
+      ? (exitLow  != null && c.low  <= exitLow)
+      : (exitHigh != null && c.high >= exitHigh);
+
+    if (hitSL || hitExit) {
+      // SL price vs channel exit price — take worse for slippage realism
+      let exitPx;
+      if (hitSL && hitExit) {
+        exitPx = isBuy ? Math.min(sl, exitLow ?? sl) : Math.max(sl, exitHigh ?? sl);
+      } else {
+        exitPx = hitSL ? sl : (isBuy ? exitLow : exitHigh);
+      }
+      const gross   = isBuy ? (exitPx - entry) * posSize : (entry - exitPx) * posSize;
+      const feeCost = posValue * fee;
+      const pnl     = gross - feeCost;
+      return {
+        result: pnl >= 0 ? 'WIN' : 'LOSS',
+        pnl: +pnl.toFixed(2),
+        pnlPct: +((pnl / posValue) * 100).toFixed(2),
+        holdBars: i - sigIdx,
+        entry, sl, tp: null, exitPrice: exitPx,
+        posValue, feeCost: +feeCost.toFixed(2),
+        exitReason: hitSL && !hitExit ? 'SL' : 'EXIT_CHANNEL',
+      };
+    }
+  }
+
+  // Timeout: close at last bar
+  const last    = candles[Math.min(sigIdx + maxBars, candles.length - 1)];
+  const gross   = isBuy ? (last.close - entry) * posSize : (entry - last.close) * posSize;
+  const feeCost = posValue * fee;
+  const pnl     = gross - feeCost;
+  return {
+    result: pnl >= 0 ? 'WIN' : 'LOSS',
+    pnl: +pnl.toFixed(2),
+    pnlPct: +((pnl / posValue) * 100).toFixed(2),
+    holdBars: Math.min(sigIdx + maxBars, candles.length - 1) - sigIdx,
+    entry, sl, tp: null, exitPrice: last.close,
+    posValue, feeCost: +feeCost.toFixed(2),
+    exitReason: 'TIMEOUT',
+  };
 }
 
 // ============================================
@@ -2835,6 +3026,37 @@ function renderMultiStrategyEquity() {
 // ============================================
 // STRATEGY TAB SWITCHING
 // ============================================
+
+/**
+ * Turtle System preset selector — called by S1/S2/Custom buttons in param panel
+ * Updates the hidden input, auto-fills entry/exit period inputs,
+ * shows/hides the custom period row, and adjusts Win Filter state.
+ */
+function selectTurtleSystem(system) {
+  document.getElementById('s_ttSystem').value = system;
+  // Button states
+  ['S1','S2','custom'].forEach(s => {
+    const el = document.getElementById(`ttBtn${s.charAt(0).toUpperCase() + s.slice(1)}`);
+    if (el) el.classList.toggle('tt-active', s === system);
+  });
+  // Show/hide custom period inputs
+  const customRow = document.getElementById('tt-custom-params');
+  if (customRow) customRow.style.display = system === 'custom' ? 'flex' : 'none';
+  // Auto-fill periods for presets
+  const entryEl = document.getElementById('s_ttEntry');
+  const exitEl  = document.getElementById('s_ttExit');
+  const filterEl = document.getElementById('s_ttWinFilter');
+  if (system === 'S1') {
+    if (entryEl) entryEl.value = 20;
+    if (exitEl)  exitEl.value  = 10;
+    if (filterEl) filterEl.checked = true;  // S1 uses Win Filter
+  } else if (system === 'S2') {
+    if (entryEl) entryEl.value = 55;
+    if (exitEl)  exitEl.value  = 20;
+    if (filterEl) filterEl.checked = false; // S2 does NOT use Win Filter
+  }
+}
+
 function switchStrategy(strategyId, tabEl) {
   // Update active tab
   document.querySelectorAll('.strat-tab').forEach(t => t.classList.remove('active'));
@@ -2867,6 +3089,7 @@ function switchStrategy(strategyId, tabEl) {
     ema_crossover: 'legEMA', rsi_reversal: 'legRSI', bb_bounce: 'legBB',
     false_breakout: 'legFB', macd_crossover: 'legMACD',
     supertrend: 'legST', donchian_breakout: 'legDC',
+    turtle_trading: 'legTT',
   };
   Object.values(legends).forEach(id => {
     const el = document.getElementById(id);

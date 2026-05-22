@@ -1425,6 +1425,47 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
   padding-left: 12px;
 }
 
+/* ── Turtle Trading preset buttons ─────────────── */
+.tt-preset-group {
+  display: flex;
+  gap: 4px;
+}
+
+.tt-preset-btn {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  padding: 3px 8px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: rgba(99, 102, 241, 0.08);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.tt-preset-btn:hover {
+  border-color: rgba(99, 102, 241, 0.5);
+  color: #a5b4fc;
+}
+
+.tt-preset-btn.tt-active {
+  background: rgba(99, 102, 241, 0.25);
+  border-color: #6366f1;
+  color: #c7d2fe;
+  box-shadow: 0 0 8px rgba(99, 102, 241, 0.3);
+}
+
+.setting-group-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 2px 0;
+}
+
 /* =====================
    STRATEGY PARAM PANELS
    ===================== */

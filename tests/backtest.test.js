@@ -522,6 +522,172 @@ test('Cooldown: no two signals within 5 bars', () => {
   assert(at28.length === 0, 'Signal at bar 28 should be suppressed by cooldown');
 });
 
+// ─── simulateTurtleTrade Tests ────────────────────────────────────────────────
+// Inline implementation (mirrors backtest.js exactly)
+function simulateTurtleTrade(candles, sigIdx, type, stopDist, exitCh, capital, sizeType, sizeValue, feeRate, maxHoldBars) {
+  const entry = candles[sigIdx]?.close;
+  if (!entry || stopDist <= 0) return null;
+  const isBuy   = type === 'bull';
+  const sl      = isBuy ? entry - stopDist : entry + stopDist;
+  const fee     = feeRate || 0;
+  const maxBars = maxHoldBars || 300;
+  let posSize;
+  if (sizeType === 'percent') {
+    posSize = (capital * (sizeValue / 100)) / entry;
+  } else if (sizeType === 'fixed') {
+    posSize = sizeValue / entry;
+  } else {
+    posSize = (capital * (sizeValue / 100)) / stopDist;
+  }
+  let posValue = posSize * entry;
+  if (posValue > capital && capital > 0) { posValue = capital; posSize = capital / entry; }
+
+  for (let i = sigIdx + 1; i < Math.min(sigIdx + maxBars, candles.length); i++) {
+    const c       = candles[i];
+    const exitLow  = exitCh.swingLow[i];
+    const exitHigh = exitCh.swingHigh[i];
+    const hitSL = isBuy ? c.low <= sl : c.high >= sl;
+    const hitExit = isBuy
+      ? (exitLow  != null && c.low  <= exitLow)
+      : (exitHigh != null && c.high >= exitHigh);
+    if (hitSL || hitExit) {
+      let exitPx;
+      if (hitSL && hitExit) {
+        exitPx = isBuy ? Math.min(sl, exitLow ?? sl) : Math.max(sl, exitHigh ?? sl);
+      } else {
+        exitPx = hitSL ? sl : (isBuy ? exitLow : exitHigh);
+      }
+      const gross   = isBuy ? (exitPx - entry) * posSize : (entry - exitPx) * posSize;
+      const feeCost = posValue * fee;
+      const pnl     = gross - feeCost;
+      return {
+        result: pnl >= 0 ? 'WIN' : 'LOSS', pnl: +pnl.toFixed(2),
+        pnlPct: +((pnl / posValue) * 100).toFixed(2),
+        holdBars: i - sigIdx,
+        entry, sl, tp: null, exitPrice: exitPx,
+        posValue, feeCost: +feeCost.toFixed(2),
+        exitReason: hitSL && !hitExit ? 'SL' : 'EXIT_CHANNEL',
+      };
+    }
+  }
+  const last    = candles[Math.min(sigIdx + maxBars, candles.length - 1)];
+  const gross   = isBuy ? (last.close - entry) * posSize : (entry - last.close) * posSize;
+  const feeCost = posValue * fee;
+  const pnl     = gross - feeCost;
+  return {
+    result: pnl >= 0 ? 'WIN' : 'LOSS', pnl: +pnl.toFixed(2),
+    pnlPct: +((pnl / posValue) * 100).toFixed(2),
+    holdBars: Math.min(sigIdx + maxBars, candles.length - 1) - sigIdx,
+    entry, sl, tp: null, exitPrice: last.close,
+    posValue, feeCost: +feeCost.toFixed(2),
+    exitReason: 'TIMEOUT',
+  };
+}
+
+console.log('\n📐 simulateTurtleTrade');
+
+// Helper: build a simple exit channel where every index has a known low/high
+function makeExitChannel(n, low, high) {
+  return {
+    swingLow:  new Array(n).fill(low),
+    swingHigh: new Array(n).fill(high),
+  };
+}
+
+test('BULL trade exits via EXIT_CHANNEL when price drops to exit low', () => {
+  const entry = 100;
+  const exitLow = 95;
+  // candles: bar 0 = signal, bar 1 = price hits exit low
+  const candles = [
+    { time: 0, open: entry, high: entry + 1, low: entry - 0.5, close: entry, volume: 1 },
+    { time: 1, open: entry, high: entry + 1, low: exitLow - 1,  close: exitLow - 0.5, volume: 1 },
+  ];
+  const exitCh = makeExitChannel(candles.length, exitLow, 110);
+  const t = simulateTurtleTrade(candles, 0, 'bull', 5, exitCh, 10000, 'percent', 10, 0, 50);
+  assert(t !== null, 'Should return trade');
+  assert(t.exitReason === 'EXIT_CHANNEL', `Expected EXIT_CHANNEL, got ${t.exitReason}`);
+  assert(t.result === 'LOSS', `Price fell below exit low → LOSS, got ${t.result}`);
+});
+
+test('BULL trade exits via SL (not exit channel)', () => {
+  const entry = 100;
+  const stopDist = 5; // sl = 95
+  const exitLow  = 80; // exit channel far below (not hit before SL)
+  const candles = [
+    { time: 0, open: entry, high: entry + 1, low: entry - 0.5, close: entry, volume: 1 },
+    { time: 1, open: entry, high: entry + 1, low: 94,           close: 94.5, volume: 1 }, // hits SL=95
+  ];
+  const exitCh = makeExitChannel(candles.length, exitLow, 120);
+  const t = simulateTurtleTrade(candles, 0, 'bull', stopDist, exitCh, 10000, 'percent', 10, 0, 50);
+  assert(t !== null, 'Should return trade');
+  assert(t.exitReason === 'SL', `Expected SL, got ${t.exitReason}`);
+  assert(t.result === 'LOSS', `SL hit → LOSS`);
+  assertClose(t.exitPrice, 95, 0.01, 'Exit price should equal SL ');
+});
+
+test('BEAR trade exits via EXIT_CHANNEL when price rises to exit high', () => {
+  const entry = 100;
+  const exitHigh = 105;
+  const candles = [
+    { time: 0, open: entry, high: entry + 1, low: entry - 0.5, close: entry, volume: 1 },
+    { time: 1, open: entry, high: exitHigh + 1, low: entry - 1, close: exitHigh + 0.5, volume: 1 },
+  ];
+  const exitCh = makeExitChannel(candles.length, 90, exitHigh);
+  const t = simulateTurtleTrade(candles, 0, 'bear', 5, exitCh, 10000, 'percent', 10, 0, 50);
+  assert(t !== null, 'Should return trade');
+  assert(t.exitReason === 'EXIT_CHANNEL', `Expected EXIT_CHANNEL, got ${t.exitReason}`);
+  assert(t.result === 'LOSS', `Price rose above exit high → LOSS for BEAR`);
+});
+
+test('Timeout when neither SL nor exit channel triggered', () => {
+  const entry = 100;
+  // 5 bars, all within safe range
+  const candles = Array.from({ length: 6 }, (_, i) => ({
+    time: i, open: entry, high: entry + 1, low: entry - 1, close: entry, volume: 1
+  }));
+  const exitCh = makeExitChannel(candles.length, 80, 120); // far away
+  const t = simulateTurtleTrade(candles, 0, 'bull', 10, exitCh, 10000, 'percent', 10, 0, 4);
+  assert(t !== null, 'Should return trade');
+  assert(t.exitReason === 'TIMEOUT', `Expected TIMEOUT, got ${t.exitReason}`);
+  assert(t.holdBars <= 4, `holdBars should be ≤ 4, got ${t.holdBars}`);
+});
+
+test('Position sizing: risk% correctly calculates posValue', () => {
+  const entry   = 100;
+  const stopDist = 5; // 2N where N=2.5
+  const capital  = 10000;
+  const riskPct  = 2;  // risk 2% of capital
+  // Expected posSize = (10000 * 0.02) / 5 = 40 units
+  // Expected posValue = 40 * 100 = 4000
+  const candles = [
+    { time: 0, open: entry, high: entry + 1, low: entry - 0.5, close: entry, volume: 1 },
+    { time: 1, open: entry, high: entry + 50, low: entry - 0.5, close: entry + 50, volume: 1 },
+  ];
+  const exitCh = makeExitChannel(candles.length, 50, 140);
+  const t = simulateTurtleTrade(candles, 0, 'bull', stopDist, exitCh, capital, 'risk', riskPct, 0, 50);
+  assert(t !== null, 'Should return trade');
+  assertClose(t.posValue, 4000, 1, 'posValue with risk 2% / 5 SL dist ');
+});
+
+test('No-look-ahead: exit channel null entries are skipped safely', () => {
+  const entry = 100;
+  // First 10 candles have null exit channel (not enough history)
+  const n = 15;
+  const candles = Array.from({ length: n }, (_, i) => ({
+    time: i, open: entry, high: entry + 1, low: entry - 1, close: entry, volume: 1
+  }));
+  const exitCh = {
+    swingLow:  new Array(n).fill(null).map((_, i) => i >= 10 ? 90 : null),
+    swingHigh: new Array(n).fill(null).map((_, i) => i >= 10 ? 110 : null),
+  };
+  // Should not throw; trade times out
+  let threw = false;
+  try {
+    simulateTurtleTrade(candles, 0, 'bull', 5, exitCh, 10000, 'percent', 10, 0, 20);
+  } catch(e) { threw = true; }
+  assert(!threw, 'Should not throw when exit channel has null entries');
+});
+
 // ─── Summary ──────────────────────────────────────────────────────────────────
 console.log('\n' + results.join('\n'));
 console.log(`\n${'─'.repeat(44)}`);

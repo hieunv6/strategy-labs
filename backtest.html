@@ -69,6 +69,10 @@
       <span class="strat-tab-icon">📦</span>
       <span>Donchian</span>
     </button>
+    <button class="strat-tab" data-strategy-id="turtle_trading" onclick="switchStrategy('turtle_trading', this)">
+      <span class="strat-tab-icon">🐢</span>
+      <span>Turtle</span>
+    </button>
     <div class="strat-tab-desc" id="stratTabDesc">EMA 20 cắt EMA 50 + Retest + Mô hình nến đảo chiều</div>
   </div>
 
@@ -346,6 +350,49 @@
           <input id="s_dcClosePct" class="ctrl-input" type="number" value="0.1" min="0.01" max="2" step="0.05" style="width:72px" />
         </div>
       </div>
+
+      <!-- Turtle Trading params -->
+      <div id="params-turtle_trading" class="strat-params-panel">
+        <!-- System preset buttons -->
+        <div class="setting-group">
+          <label class="setting-label" title="System 1: Entry 20, Exit 10 (ngắn hạn, dùng Win Filter). System 2: Entry 55, Exit 20 (dài hạn, không filter)">System</label>
+          <div class="tt-preset-group">
+            <button id="ttBtnS1" class="tt-preset-btn tt-active"
+              onclick="selectTurtleSystem('S1')" title="S1: 20/10 + Win Filter">🐢 S1</button>
+            <button id="ttBtnS2" class="tt-preset-btn"
+              onclick="selectTurtleSystem('S2')" title="S2: 55/20, no filter">🐢🐢 S2</button>
+            <button id="ttBtnCustom" class="tt-preset-btn"
+              onclick="selectTurtleSystem('custom')" title="Tùy chỉnh period">⚙️ Custom</button>
+          </div>
+          <input id="s_ttSystem" type="hidden" value="S1" />
+        </div>
+        <!-- Custom period inputs (hidden by default) -->
+        <div id="tt-custom-params" style="display:none; gap:10px; flex-wrap:wrap" class="setting-group-row">
+          <div class="setting-group">
+            <label class="setting-label" title="Số nến để xác định entry channel high/low">Entry N</label>
+            <input id="s_ttEntry" class="ctrl-input" type="number" value="20" min="5" max="200" style="width:60px" />
+          </div>
+          <div class="setting-group">
+            <label class="setting-label" title="Số nến để xác định exit channel (thường = Entry/2)">Exit N</label>
+            <input id="s_ttExit" class="ctrl-input" type="number" value="10" min="2" max="100" style="width:60px" />
+          </div>
+        </div>
+        <div class="setting-group">
+          <label class="setting-label" title="ATR period để tính N (votatility unit)">ATR (N)</label>
+          <input id="s_ttAtrPeriod" class="ctrl-input" type="number" value="20" min="5" max="50" style="width:60px" />
+        </div>
+        <div class="setting-group">
+          <label class="setting-label" title="Stop loss = X × ATR. Nguyên bản = 2N">SL ×N</label>
+          <input id="s_ttNStop" class="ctrl-input" type="number" value="2" min="0.5" max="5" step="0.5" style="width:60px" />
+        </div>
+        <div class="setting-group">
+          <label class="setting-label" title="Win Filter (System 1): bỏ qua tín hiệu nếu lệnh trước WIN. Giảm whipsaw, tăng hit rate.">Win Filter</label>
+          <label class="fb-toggle-wrap">
+            <input id="s_ttWinFilter" type="checkbox" checked onchange="void 0" />
+            <span class="fb-toggle-track"></span>
+          </label>
+        </div>
+      </div>
     </div>
 
     <!-- Portfolio coins -->
@@ -481,6 +528,7 @@
           <span class="eq-leg" style="color:#06b6d4;font-size:10px;display:none" id="legMACD">— 📉 MACD</span>
           <span class="eq-leg" style="color:#22c55e;font-size:10px;display:none" id="legST">— 🔱 ST</span>
           <span class="eq-leg" style="color:#f59e0b;font-size:10px;display:none" id="legDC">— 📦 DC</span>
+          <span class="eq-leg" style="color:#6366f1;font-size:10px;display:none" id="legTT">— 🐢 Turtle</span>
           <span class="eq-leg" style="color:orange;font-size:10px">- - B&amp;H</span>
         </div>
       </div>
