@@ -11,7 +11,7 @@ Endpoints:
 """
 
 import sqlite3, json, os, sys, signal, time, threading
-from http.server import HTTPServer, SimpleHTTPRequestHandler
+from http.server import HTTPServer, SimpleHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 from urllib.request import urlopen
 from urllib.error import URLError
@@ -189,6 +189,7 @@ class Handler(SimpleHTTPRequestHandler):
             if   parsed.path == "/api/klines":  self.api_klines(conn, params)
             elif parsed.path == "/api/meta":    self.api_meta(conn)
             elif parsed.path == "/api/status":  self.api_status(conn)
+            elif parsed.path == "/api/clear":   self.api_clear(conn)
             else: self.json_error(404, "Endpoint không tồn tại")
 
             conn.close()
@@ -232,12 +233,20 @@ class Handler(SimpleHTTPRequestHandler):
         self.json_ok([{"symbol":r[0],"interval":r[1],"count":r[2],
                         "lastTime":r[3],"updatedAt":r[4]} for r in rows])
 
-    # ── /api/status ───────────────────────────────────────────────────
+    # ── /api/status ────────────────────────────────────────────────
     def api_status(self, conn):
         count = conn.execute("SELECT COUNT(*) FROM klines").fetchone()[0]
         size  = os.path.getsize(DB_PATH) / 1024 / 1024
         self.json_ok({"status":"ok","totalCandles":count,"dbSizeMB":round(size,2),
                        "time":datetime.now().isoformat()})
+
+    # ── /api/clear ────────────────────────────────────────────────
+    def api_clear(self, conn):
+        conn.execute("DELETE FROM klines")
+        conn.execute("DELETE FROM meta")
+        conn.commit()
+        count = conn.execute("SELECT COUNT(*) FROM klines").fetchone()[0]
+        self.json_ok({"status":"ok","deleted":True,"remaining":count})
 
     # ── /api/symbols ──────────────────────────────────────────────────
     def api_symbols(self, params):
@@ -422,6 +431,25 @@ class Handler(SimpleHTTPRequestHandler):
             now = datetime.now().strftime("%H:%M:%S")
             print(f"  [{now}] {args[0][:60]} → {args[1]}")
 
+    # Accept both GET and POST for /api/clear
+    def do_POST(self):
+        parsed = urlparse(self.path)
+        if parsed.path == "/api/clear":
+            os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+            if not os.path.exists(DB_PATH):
+                self.json_ok({"status":"ok","deleted":True,"remaining":0})
+                return
+            try:
+                conn = sqlite3.connect(DB_PATH)
+                conn.execute("PRAGMA journal_mode=WAL")
+                self.api_clear(conn)
+                conn.close()
+            except Exception as e:
+                self.json_error(500, str(e))
+        else:
+            self.send_response(405)
+            self.end_headers()
+
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
@@ -444,7 +472,7 @@ def main():
         db_info = f"  💾 DB: {count:,} nến · {pairs} dataset · {size:.1f} MB\n"
     except: pass
 
-    server = HTTPServer(("", PORT), Handler)
+    server = ThreadingHTTPServer(("", PORT), Handler)
 
     print(f"""
 ╔══════════════════════════════════════════╗
@@ -458,7 +486,9 @@ def main():
     /api/klines?symbol=BTCUSDT&interval=4h
     /api/symbols        ← tất cả USDT pairs
     /api/download?symbol=BTCUSDT&interval=4h  ← auto-download
+    /api/clear  (POST)  ← xóa toàn bộ dữ liệu DB
     /api/meta · /api/status
+  [Threading] Mỗi request chạy trong thread riêng
 
   Ctrl+C để dừng
 """)

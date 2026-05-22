@@ -161,6 +161,18 @@
         </select>
       </div>
 
+      <!-- Fee Rate -->
+      <div class="setting-group">
+        <label class="setting-label" title="Phí giao dịch round-trip (vào + thoát). Binance Spot mặc định 0.1% × 2 chiều">Phí GD %</label>
+        <input id="btFeeRate" class="ctrl-input" type="number" value="0.1" min="0" max="1" step="0.01" style="width:64px" title="0 = không tính phí · 0.1 = Binance Spot · 0.04 = VIP" />
+      </div>
+
+      <!-- Max Hold Bars -->
+      <div class="setting-group">
+        <label class="setting-label" title="Số nến tối đa giữ lệnh nếu không đạt SL/TP. Mặc định 80 nến.">Max Hold</label>
+        <input id="btMaxHold" class="ctrl-input" type="number" value="80" min="10" max="500" step="10" style="width:64px" title="80 nến 4h ≈ 13 ngày · 120 nến 4h ≈ 20 ngày" />
+      </div>
+
       <button class="btn-run" id="btnRun" onclick="runBacktest()">
         <span id="btnRunText">▶ Chạy Backtest</span>
       </button>
@@ -273,6 +285,9 @@
         <div class="stat-val-sm" id="statMaxWin" style="color:var(--green)">—</div>
       </div>
     </div>
+    </div>
+    <!-- Fee disclaimer -->
+    <div id="feeDisclaimer" style="display:none;padding:6px 24px;font-size:11px;color:#f5a623;font-family:var(--font-mono);background:rgba(245,166,35,0.08);border-top:1px solid rgba(245,166,35,0.15)"></div>
     <div class="bt-candle-info"><span id="btCandleCount"></span></div>
   </div>
 
@@ -400,7 +415,7 @@
       <div class="dm-title">💾 Kho Dữ Liệu Local</div>
       <div class="dm-actions">
         <span class="dm-total" id="cacheTotalSize"></span>
-        <button class="cache-btn danger" onclick="clearAllCache()">🗑 Xóa tất cả</button>
+        <button class="cache-btn danger" onclick="clearAllCacheConfirmed()">🗑 Xóa tất cả</button>
       </div>
     </div>
     <div class="dm-body">
@@ -414,8 +429,26 @@
   <!-- Empty state -->
   <div class="bt-empty" id="btEmpty">
     <div class="bt-empty-icon">📊</div>
-    <div class="bt-empty-title">Chưa có dữ liệu backtest</div>
-    <div class="bt-empty-desc">Cài đặt tham số và nhấn <strong>▶ Chạy Backtest</strong> để bắt đầu<br/><small style="color:var(--text-muted);margin-top:8px;display:block">Dữ liệu sẽ được lưu tự động vào cache sau lần chạy đầu tiên</small></div>
+    <div class="bt-empty-title">Chào mừng đến với Strategy Lab</div>
+    <div class="bt-empty-desc">
+      <div style="display:flex;flex-direction:column;gap:10px;align-items:center;max-width:420px">
+        <div style="display:flex;gap:12px;align-items:center;background:rgba(255,255,255,0.04);border-radius:10px;padding:12px 16px;width:100%;text-align:left">
+          <span style="font-size:20px">1️⃣</span>
+          <span><strong>Chọn coin</strong> — gõ tên (BTC, ETH...) vào ô Symbol ở trên</span>
+        </div>
+        <div style="display:flex;gap:12px;align-items:center;background:rgba(255,255,255,0.04);border-radius:10px;padding:12px 16px;width:100%;text-align:left">
+          <span style="font-size:20px">2️⃣</span>
+          <span><strong>Chọn tham số</strong> — Timeframe, khoảng ngày, Stop Loss, R:R</span>
+        </div>
+        <div style="display:flex;gap:12px;align-items:center;background:rgba(255,255,255,0.04);border-radius:10px;padding:12px 16px;width:100%;text-align:left">
+          <span style="font-size:20px">3️⃣</span>
+          <span><strong>Nhấn ▶ Chạy Backtest</strong> — dữ liệu tự tải nếu chưa có, kết quả hiện ngay</span>
+        </div>
+        <div style="margin-top:4px;font-size:11px;color:var(--text-muted);font-family:var(--font-mono)">
+          💡 Đặt <strong>Phí GD = 0.1%</strong> để kết quả sát thực tế Binance Spot nhất
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- Toast -->

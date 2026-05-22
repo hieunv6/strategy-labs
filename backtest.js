@@ -166,13 +166,24 @@ function getIntervalMs(interval) {
     "4h": 14400000,
     "6h": 21600000,
     "8h": 28800000,
-    "12h": 57600000,
+    "12h": 43200000,  // Fix: 12h = 43,200,000ms (was incorrectly 57,600,000)
     "1d": 86400000,
     "3d": 259200000,
     "1w": 604800000,
     "1M": 2592000000
   };
   return map[interval] || 14400000;
+}
+
+// Helper: format bars as human-readable duration
+function fmtHoldBars(bars, interval) {
+  if (!bars) return '—';
+  const ms = bars * getIntervalMs(interval || '4h');
+  const hours = ms / 3600000;
+  if (hours < 24) return `${bars}b (~${Math.round(hours)}h)`;
+  const days = Math.round(hours / 24);
+  if (days < 30) return `${bars}b (~${days}d)`;
+  return `${bars}b (~${Math.round(days/30)}mo)`;
 }
 
 // ============================================
@@ -466,9 +477,11 @@ function onSizeTypeChange() {
 // ============================================
 // SIMULATE TRADE (With Position Sizing Models)
 // ============================================
-function simulateTrade(candles, sigIdx, crossType, slMode, slValue, atrArr, rrRatio, capital, sizeType, sizeValue) {
+function simulateTrade(candles, sigIdx, crossType, slMode, slValue, atrArr, rrRatio, capital, sizeType, sizeValue, feeRate, maxHoldBars) {
   const entry = candles[sigIdx]?.close; if (!entry) return null;
   const isBuy = crossType === 'bull';
+  const maxBars = maxHoldBars || 80;
+  const fee = feeRate || 0; // round-trip fee rate (e.g. 0.002 = 0.2%)
 
   let slDist;
   if (slMode === 'atr') {
@@ -498,31 +511,36 @@ function simulateTrade(candles, sigIdx, crossType, slMode, slValue, atrArr, rrRa
     posSize = capital / entry;
   }
 
-  for (let i = sigIdx + 1; i < Math.min(sigIdx + 80, candles.length); i++) {
+  for (let i = sigIdx + 1; i < Math.min(sigIdx + maxBars, candles.length); i++) {
     const c = candles[i];
     const hitSL = isBuy ? c.low <= sl  : c.high >= sl;
     const hitTP = isBuy ? c.high >= tp : c.low  <= tp;
     if (hitSL || hitTP) {
       const result  = hitTP && !hitSL ? 'WIN' : 'LOSS';
       const exitPx  = result === 'WIN' ? tp : sl;
-      const pnl     = isBuy ? (exitPx - entry) * posSize : (entry - exitPx) * posSize;
+      const grossPnl = isBuy ? (exitPx - entry) * posSize : (entry - exitPx) * posSize;
+      const feeCost  = posValue * fee;  // round-trip fee
+      const pnl      = grossPnl - feeCost;
       const holdBars = i - sigIdx;
       return {
         entryTime: candles[sigIdx].time, exitTime: c.time,
         type: isBuy ? 'BUY' : 'SELL', entry, sl, tp, exitPrice: exitPx,
-        result, pnl: +pnl.toFixed(2), pnlPct: +((pnl/posValue)*100).toFixed(2),
-        holdBars, slDist, slMode, posSize, posValue,
+        result: pnl >= 0 ? 'WIN' : 'LOSS',
+        pnl: +pnl.toFixed(2), pnlPct: +((pnl/posValue)*100).toFixed(2),
+        holdBars, slDist, slMode, posSize, posValue, feeCost: +feeCost.toFixed(2),
       };
     }
   }
-  const last      = candles[Math.min(sigIdx + 80, candles.length - 1)];
-  const pnl       = isBuy ? (last.close - entry) * posSize : (entry - last.close) * posSize;
-  const holdBars  = Math.min(sigIdx + 80, candles.length - 1) - sigIdx;
+  const last      = candles[Math.min(sigIdx + maxBars, candles.length - 1)];
+  const grossPnl  = isBuy ? (last.close - entry) * posSize : (entry - last.close) * posSize;
+  const feeCost   = posValue * fee;
+  const pnl       = grossPnl - feeCost;
+  const holdBars  = Math.min(sigIdx + maxBars, candles.length - 1) - sigIdx;
   return {
     entryTime: candles[sigIdx].time, exitTime: last.time,
     type: isBuy ? 'BUY' : 'SELL', entry, sl, tp, exitPrice: last.close,
     result: pnl >= 0 ? 'WIN' : 'LOSS', pnl: +pnl.toFixed(2), pnlPct: +((pnl/posValue)*100).toFixed(2),
-    holdBars, slDist, slMode, posSize, posValue,
+    holdBars, slDist, slMode, posSize, posValue, feeCost: +feeCost.toFixed(2),
   };
 }
 
@@ -530,7 +548,7 @@ function simulateTrade(candles, sigIdx, crossType, slMode, slValue, atrArr, rrRa
 // RUN SINGLE SYMBOL
 // ============================================
 function runSymbolBacktest(candles, params) {
-  const { slMode, slValue, atrPeriod, rrRatio, capital, sizeType, sizeValue, pattern: filterPattern } = params;
+  const { slMode, slValue, atrPeriod, rrRatio, capital, sizeType, sizeValue, pattern: filterPattern, feeRate, maxHoldBars } = params;
   const ema20  = calcEMA(candles, 20);
   const ema50  = calcEMA(candles, 50);
   const atrArr = slMode === 'atr' ? calcATR(candles, atrPeriod) : null;
@@ -545,7 +563,7 @@ function runSymbolBacktest(candles, params) {
     if (!pattern) return;
     if (filterPattern && filterPattern !== 'all' && pattern !== filterPattern) return;
     const sigIdx  = Math.min(rt.index + 1, candles.length - 1);
-    const trade   = simulateTrade(candles, sigIdx, cx.type, slMode, slValue, atrArr, rrRatio, cap, sizeType, sizeValue);
+    const trade   = simulateTrade(candles, sigIdx, cx.type, slMode, slValue, atrArr, rrRatio, cap, sizeType, sizeValue, feeRate, maxHoldBars);
     if (!trade) return;
     trade.pattern = pattern;
     trades.push(trade);
@@ -892,6 +910,7 @@ function renderTradeTable(trades) {
   const symbolHeaders = document.querySelectorAll('.col-symbol');
   symbolHeaders.forEach(el => el.style.display = showSymbol ? 'table-cell' : 'none');
 
+  const curInterval = document.getElementById('btInterval')?.value || '4h';
   trades.forEach((t,i) => {
     const row = document.createElement('tr');
     row.className = `trade-row ${t.result==='WIN'?'row-win':'row-loss'}`;
@@ -902,6 +921,8 @@ function renderTradeTable(trades) {
     const pc    = t.pnl >= 0 ? 'pnl-pos' : 'pnl-neg';
     const sg    = t.pnl >= 0 ? '+' : '';
     const slTag = t.slMode === 'atr' ? `ATR×${(t.slDist/1).toFixed?.(0)}` : `${(t.slDist/t.entry*100).toFixed(1)}%`;
+    const holdStr = fmtHoldBars(t.holdBars, curInterval);
+    const feeStr  = t.feeCost > 0 ? ` <span style="color:var(--text-muted);font-size:10px">(-$${t.feeCost.toFixed(2)} fee)</span>` : '';
     row.innerHTML = `
       <td style="color:var(--text-muted)">${i+1}</td>
       ${t.symbol ? `<td class="col-symbol" style="color:var(--accent);font-weight:600;display:${showSymbol?'table-cell':'none'}">${t.symbol.replace('USDT','')}</td>` : ''}
@@ -912,9 +933,9 @@ function renderTradeTable(trades) {
       <td>${fmtP(t.entry)}</td><td style="color:var(--red)">${fmtP(t.sl)}</td>
       <td style="color:var(--green)">${fmtP(t.tp)}</td><td>${fmtP(t.exitPrice)}</td>
       <td style="color:var(--text-muted);font-size:10px">${slTag}</td>
-      <td>${t.holdBars||'—'}b</td>
+      <td style="font-size:11px;white-space:nowrap">${holdStr}</td>
       <td><span class="badge ${t.result==='WIN'?'badge-win':'badge-loss'}">${t.result}</span></td>
-      <td class="${pc}">${sg}$${Math.abs(t.pnl).toFixed(2)}</td>
+      <td class="${pc}">${sg}$${Math.abs(t.pnl).toFixed(2)}${feeStr}</td>
       <td class="${pc}">${sg}${t.pnlPct}%</td>`;
     tbody.appendChild(row);
   });
@@ -1134,6 +1155,38 @@ function toggleSLMode(mode) {
 }
 
 // ============================================
+// METRIC TOOLTIPS
+// ============================================
+const METRIC_TIPS = {
+  statWinRate:    '% lệnh thắng.\n> 50% = tốt\nLưu ý: win rate cao chưa chắc lãi nếu avg loss lớn hơn avg win.',
+  statPF:         'Profit Factor = Tổng lãi / Tổng lỗ.\n> 1.5 = tốt · > 2.0 = xuất sắc\n"∞" = không có lệnh thua.',
+  statPnL:        'Tổng lợi nhuận sau phí (nếu có cài đặt phí giao dịch).',
+  statFinal:      'Vốn cuối kỳ sau khi cộng tất cả lãi/lỗ.',
+  statDD:         'Max Drawdown: mức giảm vốn lớn nhất từ đỉnh.\n< 15% = an toàn · < 30% = chấp nhận được\n> 50% = nguy hiểm cho tâm lý.',
+  statCAGR:       'CAGR = Compound Annual Growth Rate.\nTỷ lệ tăng trưởng vốn trung bình mỗi năm (đã gộp lãi).',
+  statSharpe:     'Sharpe Ratio = lợi nhuận / rủi ro (dựa trên monthly returns).\n> 1.0 = tốt · > 2.0 = xuất sắc\n< 0 = chiến lược tệ hơn giữ cash.',
+  statSortino:    'Sortino Ratio = như Sharpe nhưng chỉ tính downside risk.\n> 1.5 = tốt · Cao hơn Sharpe = ít lỗ bất ngờ.',
+  statRecovery:   'Recovery Factor = Tổng PnL / Drawdown tuyệt đối.\n> 2.0 = tốt: lãi gấp đôi mức drawdown tối đa.',
+  statExpectancy: 'Kỳ vọng trung bình mỗi lệnh = (WR × AvgWin) − (LossRate × AvgLoss).\nPhải > $0 để chiến lược có lãi dài hạn.',
+  statAvgHold:    'Thời gian giữ lệnh trung bình tính theo số nến (bars).',
+};
+
+function initMetricTooltips() {
+  Object.entries(METRIC_TIPS).forEach(([id, tip]) => {
+    const card = document.getElementById(id)?.closest?.('.stat-card, .stat-card-sm');
+    if (!card) return;
+    const label = card.querySelector('.stat-label, .stat-label-sm');
+    if (!label || label.querySelector('.tip-icon')) return;
+    const icon = document.createElement('span');
+    icon.className = 'tip-icon';
+    icon.textContent = ' ⓘ';
+    icon.title = tip;
+    icon.style.cssText = 'font-size:10px;opacity:0.5;cursor:help;vertical-align:middle';
+    label.appendChild(icon);
+  });
+}
+
+// ============================================
 // RENDER EXTENDED STATS
 // ============================================
 function renderStats(m, capital) {
@@ -1146,7 +1199,7 @@ function renderStats(m, capital) {
 
   set('statTotal', m.total);
   set('statWinRate', `${m.winRate.toFixed(1)}%`, v => parseFloat(v) >= 50 ? 'var(--green)' : 'var(--red)');
-  set('statPF', m.profitFactor === 999 ? '∞' : m.profitFactor.toFixed(2), v => parseFloat(v) >= 1 ? 'var(--green)' : 'var(--red)');
+  set('statPF', m.profitFactor === 999 ? '∞' : m.profitFactor.toFixed(2), v => v === '∞' || parseFloat(v) >= 1 ? 'var(--green)' : 'var(--red)');
   set('statPnL', fmtMoney(m.totalPnL));
   document.getElementById('statPnL').className = 'stat-value ' + (m.totalPnL >= 0 ? 'green' : 'red');
   set('statFinal', '$' + Math.round(m.finalCapital).toLocaleString());
@@ -1154,7 +1207,23 @@ function renderStats(m, capital) {
   set('statDD', `-${m.maxDrawdown.toFixed(1)}%`);
   set('statAvgWin', `+$${m.avgWin.toFixed(2)}`);
   set('statAvgLoss', `-$${m.avgLoss.toFixed(2)}`);
-  
+
+  // Fee disclaimer
+  const feeEl = document.getElementById('feeDisclaimer');
+  if (feeEl) {
+    const feeRate = parseFloat(document.getElementById('btFeeRate')?.value || 0);
+    const totalFees = m.totalFees || 0;
+    if (feeRate > 0 && totalFees > 0) {
+      feeEl.textContent = `⚠️ Đã trừ phí giao dịch: -$${totalFees.toFixed(2)} (${feeRate}% × 2 chiều)`;
+      feeEl.style.display = 'block';
+    } else if (feeRate === 0) {
+      feeEl.textContent = '⚠️ Chưa tính phí giao dịch — kết quả thực tế sẽ thấp hơn (~0.1-0.2% mỗi lệnh)';
+      feeEl.style.display = 'block';
+    } else {
+      feeEl.style.display = 'none';
+    }
+  }
+
   // CAGR
   const cagrVal = m.cagr !== undefined ? `${m.cagr >= 0 ? '+' : ''}${m.cagr.toFixed(1)}%` : '—';
   set('statCAGR', cagrVal);
@@ -1176,9 +1245,12 @@ function renderStats(m, capital) {
   set('statSortino', m.sortino, v => parseFloat(v) >= 1.5 ? 'var(--green)' : parseFloat(v) < 0 ? 'var(--red)' : 'var(--text)');
   set('statRecovery', m.recoveryFactor);
   set('statExpectancy', `${m.expectancy >= 0 ? '+' : ''}$${m.expectancy}`);
-  set('statAvgHold', `${m.avgHold}b`);
+  const curInterval = document.getElementById('btInterval')?.value || '4h';
+  set('statAvgHold', fmtHoldBars(m.avgHold, curInterval));
   set('statMaxLoss', m.maxLossStreak);
   set('statMaxWin', m.maxWinStreak);
+
+  initMetricTooltips();
 }
 
 // ============================================
@@ -1223,7 +1295,11 @@ async function runBacktest() {
   // Candlestick Pattern params
   const selectedPattern = document.getElementById('btPattern')?.value || 'all';
 
-  const params = { slMode, slValue, atrPeriod, rrRatio, capital, sizeType, sizeValue, pattern: selectedPattern };
+  // Fee & Max Hold params
+  const feeRate   = parseFloat(document.getElementById('btFeeRate')?.value || 0) / 100; // convert % to decimal
+  const maxHoldBars = parseInt(document.getElementById('btMaxHold')?.value || 80);
+
+  const params = { slMode, slValue, atrPeriod, rrRatio, capital, sizeType, sizeValue, pattern: selectedPattern, feeRate, maxHoldBars };
 
   // Determine list of symbols to test
   let symbolsToTest = [];
@@ -1356,6 +1432,8 @@ async function runBacktest() {
 
     // ── COMPUTE METRICS ─────────────────────────────
     const m = calcMetrics(allTrades, capital, startTimeMs, endTimeMs);
+    // Compute total fees paid
+    m.totalFees = allTrades.reduce((s, t) => s + (t.feeCost || 0), 0);
     const patternStats = calcPatternStats(allTrades);
 
     // ── UPDATE UI ───────────────────────────────────
@@ -1427,6 +1505,28 @@ window.addEventListener('resize', () => {
     if (m) renderEquityCurve(m.equityCurve, BT.trades);
   }, 200);
 });
+
+// ============================================
+// CLEAR CACHE WITH CONFIRM
+// ============================================
+async function clearAllCacheConfirmed() {
+  const confirmed = window.confirm(
+    '🗑 Xóa tất cả dữ liệu local?\n\nDữ liệu sẽ bị xóa khỏi SQLite DB.\nBạn cần tải lại từ Binance khi backtest lần sau.\n\nTiếp tục?'
+  );
+  if (!confirmed) return;
+  try {
+    const res = await fetch('/api/clear', { method: 'POST' });
+    if (res.ok) {
+      showToast('✅ Đã xóa tất cả dữ liệu local');
+      SS.dbSet.clear();
+      await refreshDataManager();
+    } else {
+      showToast('⚠️ Không thể xóa — thử xóa file db/market_data.db thủ công');
+    }
+  } catch(e) {
+    showToast('⚠️ Server chưa hỗ trợ endpoint xóa — xóa file db/market_data.db thủ công');
+  }
+}
 
 window.addEventListener('DOMContentLoaded', () => {
   initSymbolSearch();
