@@ -1306,12 +1306,15 @@ function simulateTurtleTrade(candles, sigIdx, type, stopDist, exitCh, capital, s
       const feeCost = posValue * fee;
       const pnl     = gross - feeCost;
       return {
+        entryTime: candles[sigIdx]?.time,
+        exitTime: c.time,
+        type: isBuy ? 'BUY' : 'SELL',
         result: pnl >= 0 ? 'WIN' : 'LOSS',
         pnl: +pnl.toFixed(2),
         pnlPct: +((pnl / posValue) * 100).toFixed(2),
         holdBars: i - sigIdx,
         entry, sl, tp: null, exitPrice: exitPx,
-        posValue, feeCost: +feeCost.toFixed(2),
+        posSize, posValue, feeCost: +feeCost.toFixed(2),
         exitReason: hitSL && !hitExit ? 'SL' : 'EXIT_CHANNEL',
       };
     }
@@ -1323,12 +1326,15 @@ function simulateTurtleTrade(candles, sigIdx, type, stopDist, exitCh, capital, s
   const feeCost = posValue * fee;
   const pnl     = gross - feeCost;
   return {
+    entryTime: candles[sigIdx]?.time,
+    exitTime: last.time,
+    type: isBuy ? 'BUY' : 'SELL',
     result: pnl >= 0 ? 'WIN' : 'LOSS',
     pnl: +pnl.toFixed(2),
     pnlPct: +((pnl / posValue) * 100).toFixed(2),
     holdBars: Math.min(sigIdx + maxBars, candles.length - 1) - sigIdx,
     entry, sl, tp: null, exitPrice: last.close,
-    posValue, feeCost: +feeCost.toFixed(2),
+    posSize, posValue, feeCost: +feeCost.toFixed(2),
     exitReason: 'TIMEOUT',
   };
 }
