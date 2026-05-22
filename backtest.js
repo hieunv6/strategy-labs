@@ -720,6 +720,62 @@ function calcMetrics(trades, capital, startTimeMs, endTimeMs) {
 }
 
 // ============================================
+// BUY AND HOLD METRICS
+// ============================================
+/**
+ * Cải thiện của calcBuyAndHold:
+ * - Mua tại nến đầu tiên trong khoảng [startMs, endMs]
+ * - Bán tại nến cuối cùng
+ * - Tạo equity curve theo từng nến dể vẽ overlay
+ * - Gom về độ phân giải thấp hơn nếu quá nhiều nến (vẽ nhanh hơn)
+ */
+function calcBuyAndHold(candles, capital, startMs, endMs) {
+  if (!candles || candles.length < 2) return null;
+
+  const inRange = candles.filter(c => (!startMs || c.time >= startMs) && (!endMs || c.time <= endMs));
+  if (inRange.length < 2) return null;
+
+  const buyPrice  = inRange[0].close;
+  const sellPrice = inRange[inRange.length - 1].close;
+  const shares    = capital / buyPrice;
+
+  // Equity curve theo từng nến (dample xuống nếu quá lớn)
+  const MAX_POINTS = 500;
+  const step = Math.max(1, Math.floor(inRange.length / MAX_POINTS));
+  const sampledCandles = inRange.filter((_, i) => i % step === 0 || i === inRange.length - 1);
+  const curve = sampledCandles.map(c => +(shares * c.close).toFixed(2));
+
+  // Max Drawdown của B&H
+  let peak = capital, maxDD = 0;
+  curve.forEach(v => {
+    if (v > peak) peak = v;
+    const dd = peak > 0 ? (peak - v) / peak * 100 : 0;
+    if (dd > maxDD) maxDD = dd;
+  });
+
+  const totalPnL = +(shares * (sellPrice - buyPrice)).toFixed(2);
+  const pnlPct   = +((sellPrice - buyPrice) / buyPrice * 100).toFixed(2);
+  const finalCap = +(capital + totalPnL).toFixed(2);
+
+  // CAGR
+  const durationMs = (inRange[inRange.length - 1].time - inRange[0].time);
+  const years      = durationMs / (365.25 * 24 * 3600 * 1000);
+  const cagr       = years > 0.01
+    ? +((Math.pow(finalCap / capital, 1 / years) - 1) * 100).toFixed(1)
+    : 0;
+
+  return {
+    buyPrice, sellPrice, shares,
+    totalPnL, pnlPct, finalCap,
+    maxDrawdown: +maxDD.toFixed(1),
+    cagr, curve,
+    startDate: new Date(inRange[0].time).toLocaleDateString('vi-VN'),
+    endDate:   new Date(inRange[inRange.length - 1].time).toLocaleDateString('vi-VN'),
+    candles: inRange.length,
+  };
+}
+
+// ============================================
 // MONTHLY BREAKDOWN
 // ============================================
 function calcMonthlyBreakdown(trades) {
@@ -758,23 +814,29 @@ function calcPatternStats(trades) {
 }
 
 // ============================================
-// RENDER EQUITY CURVE
+// RENDER EQUITY CURVE (v2 — with B&H overlay)
 // ============================================
-function renderEquityCurve(curve, trades) {
+function renderEquityCurve(curve, trades, bhData) {
   const canvas = document.getElementById('equityCanvas');
   const dpr = window.devicePixelRatio || 1;
-  const W = canvas.parentElement.offsetWidth - 32, H = 240;
+  const W = canvas.parentElement.offsetWidth - 32, H = 260;
   canvas.width = W * dpr; canvas.height = H * dpr;
   canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
   const ctx = canvas.getContext('2d'); ctx.scale(dpr, dpr);
   ctx.clearRect(0, 0, W, H);
-  const PAD = { top:24, right:24, bottom:40, left:82 };
+  const PAD = { top:24, right:100, bottom:40, left:82 };
   const cW = W - PAD.left - PAD.right, cH = H - PAD.top - PAD.bottom;
-  const minE = Math.min(...curve) * 0.997, maxE = Math.max(...curve) * 1.003;
-  const range = maxE - minE || 1;
-  const toX = i => PAD.left + (i / (curve.length - 1)) * cW;
-  const toY = v => PAD.top + cH - ((v - minE) / range) * cH;
 
+  // Combined min/max including B&H
+  const allVals = [...curve, ...(bhData?.curve || [])];
+  const minE = Math.min(...allVals) * 0.997;
+  const maxE = Math.max(...allVals) * 1.003;
+  const range = maxE - minE || 1;
+
+  const toX  = (i, len) => PAD.left + (i / Math.max(len - 1, 1)) * cW;
+  const toY  = v => PAD.top + cH - ((v - minE) / range) * cH;
+
+  // Grid lines
   ctx.strokeStyle = C.grid; ctx.lineWidth = 1;
   for (let g = 0; g <= 4; g++) {
     const y = PAD.top + (g / 4) * cH;
@@ -784,39 +846,96 @@ function renderEquityCurve(curve, trades) {
     ctx.fillText('$' + Math.round(val).toLocaleString(), PAD.left - 5, y + 4);
   }
 
-  ctx.beginPath(); ctx.moveTo(toX(0), toY(curve[0]));
-  curve.forEach((v,i) => ctx.lineTo(toX(i), toY(v)));
-  ctx.lineTo(toX(curve.length - 1), PAD.top + cH);
+  // ── B&H overlay ────────────────────────────────────
+  if (bhData?.curve?.length >= 2) {
+    const bc = bhData.curve;
+    ctx.save();
+    ctx.setLineDash([5, 4]);
+    ctx.strokeStyle = 'rgba(255, 165, 0, 0.65)';
+    ctx.lineWidth   = 1.8;
+    ctx.beginPath();
+    bc.forEach((v, i) => {
+      const x = toX(i, bc.length);
+      const y = toY(v);
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+
+    // B&H end label
+    const bLast = bhData.curve[bhData.curve.length - 1];
+    const bPct  = bhData.pnlPct >= 0 ? `+${bhData.pnlPct.toFixed(1)}%` : `${bhData.pnlPct.toFixed(1)}%`;
+    ctx.fillStyle = 'rgba(255, 165, 0, 0.85)';
+    ctx.font = '10px JetBrains Mono,monospace'; ctx.textAlign = 'left';
+    ctx.fillText(`B&H ${bPct}`, W - PAD.right + 6, toY(bLast) + 4);
+  }
+
+  // ── Strategy area fill ────────────────────────────────
+  ctx.beginPath(); ctx.moveTo(toX(0, curve.length), toY(curve[0]));
+  curve.forEach((v, i) => ctx.lineTo(toX(i, curve.length), toY(v)));
+  ctx.lineTo(toX(curve.length - 1, curve.length), PAD.top + cH);
   ctx.lineTo(PAD.left, PAD.top + cH); ctx.closePath();
   const isPos = curve[curve.length - 1] >= curve[0];
   const grd = ctx.createLinearGradient(0, PAD.top, 0, PAD.top + cH);
-  grd.addColorStop(0, isPos ? 'rgba(0, 245, 160, 0.18)' : 'rgba(255, 63, 96, 0.18)');
+  grd.addColorStop(0, isPos ? 'rgba(0, 245, 160, 0.15)' : 'rgba(255, 63, 96, 0.15)');
   grd.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = grd; ctx.fill();
 
-  trades.forEach((t,i) => {
+  // ── Trade segments ────────────────────────────────────────
+  trades.forEach((t, i) => {
     ctx.strokeStyle = t.result === 'WIN' ? C.green : C.red; ctx.lineWidth = 1.8;
-    ctx.beginPath(); ctx.moveTo(toX(i), toY(curve[i])); ctx.lineTo(toX(i+1), toY(curve[i+1])); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(toX(i, curve.length), toY(curve[i]));
+    ctx.lineTo(toX(i + 1, curve.length), toY(curve[i + 1]));
+    ctx.stroke();
   });
 
   if (trades.length <= 400) {
-    trades.forEach((t,i) => {
+    trades.forEach((t, i) => {
       const col = t.result === 'WIN' ? C.green : C.red;
       ctx.fillStyle = col; ctx.shadowBlur = 4; ctx.shadowColor = col;
-      ctx.beginPath(); ctx.arc(toX(i+1), toY(curve[i+1]), trades.length > 150 ? 1.5 : 3, 0, Math.PI * 2);
+      ctx.beginPath();
+      ctx.arc(toX(i + 1, curve.length), toY(curve[i + 1]), trades.length > 150 ? 1.5 : 3, 0, Math.PI * 2);
       ctx.fill(); ctx.shadowBlur = 0;
     });
   }
 
-  ctx.fillStyle = C.textDim; ctx.beginPath(); ctx.arc(toX(0), toY(curve[0]), 4, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = C.textDim;
+  ctx.beginPath(); ctx.arc(toX(0, curve.length), toY(curve[0]), 4, 0, Math.PI * 2); ctx.fill();
 
+  // Strategy end label
+  const sLast  = curve[curve.length - 1];
+  const sPct   = ((sLast - curve[0]) / curve[0] * 100);
+  const sPctStr = sPct >= 0 ? `+${sPct.toFixed(1)}%` : `${sPct.toFixed(1)}%`;
+  const sColor  = sLast >= curve[0] ? C.green : C.red;
+  ctx.fillStyle = sColor; ctx.font = '10px JetBrains Mono,monospace'; ctx.textAlign = 'left';
+  ctx.fillText(`Strat ${sPctStr}`, W - PAD.right + 6, toY(sLast) + 4);
+
+  // X-axis time labels
   ctx.fillStyle = C.textMuted; ctx.font = '10px JetBrains Mono,monospace'; ctx.textAlign = 'center';
   const step = Math.max(1, Math.floor(trades.length / 8));
-  trades.forEach((t,i) => {
+  trades.forEach((t, i) => {
     if (i % step !== 0) return;
     const d = new Date(t.entryTime);
-    ctx.fillText(`${d.getMonth()+1}/${d.getFullYear().toString().slice(2)}`, toX(i+1), H - PAD.bottom + 16);
+    ctx.fillText(`${d.getMonth() + 1}/${d.getFullYear().toString().slice(2)}`, toX(i + 1, curve.length), H - PAD.bottom + 16);
   });
+
+  // Legend
+  ctx.font = '10px JetBrains Mono,monospace';
+  const lx = PAD.left + 10, ly = PAD.top + 12;
+  ctx.fillStyle = isPos ? C.green : C.red;
+  ctx.fillRect(lx, ly - 8, 18, 3);
+  ctx.fillStyle = C.textDim; ctx.textAlign = 'left';
+  ctx.fillText('Chiến lược', lx + 22, ly);
+  if (bhData) {
+    ctx.setLineDash([5, 4]);
+    ctx.strokeStyle = 'rgba(255,165,0,0.75)'; ctx.lineWidth = 1.8;
+    ctx.beginPath(); ctx.moveTo(lx + 90, ly - 5); ctx.lineTo(lx + 108, ly - 5); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = C.textDim;
+    ctx.fillText('Buy & Hold', lx + 112, ly);
+  }
 }
 
 // ============================================
@@ -1524,6 +1643,19 @@ async function runBacktest() {
     m.totalFees = allTrades.reduce((s, t) => s + (t.feeCost || 0), 0);
     const patternStats = calcPatternStats(allTrades);
 
+    // ── BUY & HOLD ───────────────────────────────────
+    // Lấy candles của symbol đại diện (single mode: symbol đó; portfolio: coin đầu tiên)
+    try {
+      const refSymbol = BT.mode === 'portfolio'
+        ? getSelectedPortfolioSymbols()[0]
+        : document.getElementById('btSymbol').value.toUpperCase().trim();
+      const refCandles = await fetchFromLocalDB(refSymbol, interval, startTimeMs, endTimeMs);
+      BT.bhData = calcBuyAndHold(refCandles, capital, startTimeMs, endTimeMs);
+    } catch(e) {
+      BT.bhData = null;
+      console.warn('B&H calc failed:', e);
+    }
+
     // ── UPDATE UI ───────────────────────────────────
     const hasSymbol = Object.keys(perSymbol).length > 0;
     document.getElementById('btCandleCount').textContent =
@@ -1536,12 +1668,13 @@ async function runBacktest() {
     renderStats(m, capital);
 
     setTimeout(() => {
-      renderEquityCurve(m.equityCurve, allTrades);
+      renderEquityCurve(m.equityCurve, allTrades, BT.bhData);
       renderMonthlyHeatmap(m.monthly);
       renderDistribution(allTrades, m);
       renderPatternTable(patternStats);
       renderSymbolBreakdown(perSymbol);
       renderTradeTable(allTrades);
+      renderBHComparison(m, BT.bhData, capital);
       hideProgress();
     }, 50);
 
@@ -1586,13 +1719,122 @@ window.addEventListener('resize', () => {
   clearTimeout(_rt); _rt = setTimeout(() => {
     if (!BT.trades.length) return;
     const startDateStr = document.getElementById('btStartDate').value;
-    const endDateStr = document.getElementById('btEndDate').value;
-    const startTimeMs = startDateStr ? new Date(startDateStr).getTime() : 0;
-    const endTimeMs = endDateStr ? new Date(endDateStr).getTime() + 86_399_999 : Date.now();
+    const endDateStr   = document.getElementById('btEndDate').value;
+    const startTimeMs  = startDateStr ? new Date(startDateStr).getTime() : 0;
+    const endTimeMs    = endDateStr   ? new Date(endDateStr).getTime() + 86_399_999 : Date.now();
     const m = calcMetrics(BT.trades, parseFloat(document.getElementById('btCapital').value), startTimeMs, endTimeMs);
-    if (m) renderEquityCurve(m.equityCurve, BT.trades);
+    if (m) renderEquityCurve(m.equityCurve, BT.trades, BT.bhData);
   }, 200);
 });
+
+// ============================================
+// RENDER BUY & HOLD COMPARISON
+// ============================================
+function renderBHComparison(stratMetrics, bh, capital) {
+  const section = document.getElementById('bhCompareSection');
+  if (!section) return;
+  section.style.display = 'block';
+
+  if (!bh) {
+    section.innerHTML = `
+      <div class="bt-section-header">
+        <h2 class="bt-section-title">💰 So Sánh: Chiến Lược vs Buy &amp; Hold</h2>
+      </div>
+      <div style="padding:20px;color:var(--text-muted);font-family:var(--font-mono);font-size:12px">
+        Không có dữ liệu B&H — chạy backtest để tải
+      </div>`;
+    return;
+  }
+
+  const s = stratMetrics;
+  const rows = [
+    {
+      metric: '💰 Tổng PnL',
+      strat:  { val: `${s.totalPnL >= 0 ? '+' : ''}$${s.totalPnL.toFixed(2)}`, pos: s.totalPnL >= 0 },
+      bh:     { val: `${bh.totalPnL >= 0 ? '+' : ''}$${bh.totalPnL.toFixed(2)}`, pos: bh.totalPnL >= 0 },
+      winner: s.totalPnL >= bh.totalPnL ? 'strat' : 'bh',
+    },
+    {
+      metric: '📈 PnL %',
+      strat:  { val: `${s.totalPnL >= 0 ? '+' : ''}${((s.finalCapital - capital) / capital * 100).toFixed(1)}%`, pos: s.totalPnL >= 0 },
+      bh:     { val: `${bh.pnlPct >= 0 ? '+' : ''}${bh.pnlPct.toFixed(1)}%`, pos: bh.pnlPct >= 0 },
+      winner: s.totalPnL / capital >= bh.totalPnL / capital ? 'strat' : 'bh',
+    },
+    {
+      metric: '⚡ Vốn Cuối',
+      strat:  { val: `$${Math.round(s.finalCapital).toLocaleString()}`, pos: s.finalCapital >= capital },
+      bh:     { val: `$${Math.round(bh.finalCap).toLocaleString()}`, pos: bh.finalCap >= capital },
+      winner: s.finalCapital >= bh.finalCap ? 'strat' : 'bh',
+    },
+    {
+      metric: '📅 CAGR/Năm',
+      strat:  { val: `${s.cagr >= 0 ? '+' : ''}${s.cagr.toFixed(1)}%`, pos: s.cagr >= 0 },
+      bh:     { val: `${bh.cagr >= 0 ? '+' : ''}${bh.cagr.toFixed(1)}%`, pos: bh.cagr >= 0 },
+      winner: s.cagr >= bh.cagr ? 'strat' : 'bh',
+    },
+    {
+      metric: '📉 Max Drawdown',
+      strat:  { val: `-${s.maxDrawdown.toFixed(1)}%`, pos: false },
+      bh:     { val: `-${bh.maxDrawdown.toFixed(1)}%`, pos: false },
+      winner: s.maxDrawdown <= bh.maxDrawdown ? 'strat' : 'bh', // nhỏ hơn = tốt hơn
+    },
+    {
+      metric: '⚖️ Sharpe Ratio',
+      strat:  { val: `${s.sharpe}`, pos: s.sharpe >= 1 },
+      bh:     { val: '—', pos: false }, // B&H không có Sharpe
+      winner: 'strat',
+    },
+  ];
+
+  // Count strategy wins
+  const stratWins = rows.filter(r => r.winner === 'strat').length;
+  const bhWins    = rows.filter(r => r.winner === 'bh').length;
+  const overallWinner = stratWins > bhWins ? 'strat' : stratWins < bhWins ? 'bh' : 'tie';
+  const verdictColor = overallWinner === 'strat' ? 'var(--green)' : overallWinner === 'bh' ? 'var(--red)' : 'var(--text-muted)';
+  const verdictText  = overallWinner === 'strat'
+    ? `✅ Chiến lược OUTPERFORM B&H (${stratWins}/${rows.length} tiêu chí)`
+    : overallWinner === 'bh'
+    ? `⚠️ B&H OUTPERFORM Chiến lược (${bhWins}/${rows.length} tiêu chí)`
+    : `↔️ Hòa — Chiến lược và B&H ngang nhau`;
+
+  const rowsHtml = rows.map(r => `
+    <tr>
+      <td style="color:var(--text-muted);padding:10px 12px;font-family:var(--font-mono);font-size:12px">${r.metric}</td>
+      <td style="padding:10px 12px;text-align:center;font-weight:${r.winner==='strat'?'700':'400'};color:${r.strat.pos?'var(--green)':r.strat.val==='\u2014'?'var(--text-muted)':'var(--red)'};font-family:var(--font-mono);font-size:13px;background:${r.winner==='strat'?'rgba(0,245,160,0.06)':'transparent'};border-radius:6px">
+        ${r.winner==='strat'?'<span style="color:var(--green);margin-right:4px">🏆</span>':''}
+        ${r.strat.val}
+      </td>
+      <td style="padding:10px 12px;text-align:center;font-weight:${r.winner==='bh'?'700':'400'};color:${r.bh.pos?'var(--green)':r.bh.val==='\u2014'?'var(--text-muted)':'var(--red)'};font-family:var(--font-mono);font-size:13px;background:${r.winner==='bh'?'rgba(255,165,0,0.08)':'transparent'};border-radius:6px">
+        ${r.winner==='bh'?'<span style="color:orange;margin-right:4px">🏆</span>':''}
+        ${r.bh.val}
+      </td>
+    </tr>`).join('');
+
+  section.innerHTML = `
+    <div class="bt-section-header">
+      <h2 class="bt-section-title">💰 So Sánh: Chiến Lược vs Buy &amp; Hold</h2>
+      <span style="font-size:11px;color:var(--text-muted);font-family:var(--font-mono)">
+        Mua ${bh.startDate} @ $${bh.buyPrice.toLocaleString(undefined,{maximumFractionDigits:2})} → bán ${bh.endDate} @ $${bh.sellPrice.toLocaleString(undefined,{maximumFractionDigits:2})}
+      </span>
+    </div>
+    <div style="padding:0 16px 8px">
+      <div style="background:${overallWinner==='strat'?'rgba(0,245,160,0.07)':overallWinner==='bh'?'rgba(255,165,0,0.07)':'rgba(255,255,255,0.04)'};
+                  border:1px solid ${overallWinner==='strat'?'rgba(0,245,160,0.2)':overallWinner==='bh'?'rgba(255,165,0,0.2)':'rgba(255,255,255,0.08)'};
+                  border-radius:10px;padding:12px 16px;margin-bottom:16px;text-align:center">
+        <span style="font-size:15px;font-weight:700;color:${verdictColor};font-family:var(--font-mono)">${verdictText}</span>
+      </div>
+      <div class="trade-table-wrap">
+        <table class="trade-table" style="width:100%">
+          <thead><tr>
+            <th style="text-align:left;padding:10px 12px">Tiêu chí</th>
+            <th style="text-align:center;padding:10px 12px;color:var(--accent)">Chiến lược EMA</th>
+            <th style="text-align:center;padding:10px 12px;color:orange">Buy &amp; Hold 💤</th>
+          </tr></thead>
+          <tbody>${rowsHtml}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
 
 // ============================================
 // CLEAR CACHE WITH CONFIRM
