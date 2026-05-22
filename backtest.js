@@ -11,10 +11,61 @@ const C = {
 };
 
 const PATTERN_NAMES = {
-  bullHammer:'Hammer ↑', bullEngulfing:'Engulfing ↑',
-  pinBarBull:'Pin Bar ↑', dojiStar:'Doji',
-  bearEngulfing:'Engulfing ↓', shootingStar:'Shooting Star',
-  hangingMan:'Hanging Man',
+  // ─ Single-candle ───────────────────────────────
+  bullHammer:     'Hammer ↑',
+  invertedHammer: 'Inv. Hammer ↑',
+  pinBarBull:     'Pin Bar ↑',
+  dojiStar:       'Doji —',
+  dragonflyDoji:  'Dragonfly Doji ↑',
+  gravestoneDoji: 'Gravestone Doji ↓',
+  marubozuBull:   'Marubozu ↑',
+  marubozuBear:   'Marubozu ↓',
+  spintop:        'Spinning Top —',
+  // ─ Single-candle bear ──────────────────────────
+  hangingMan:     'Hanging Man ↓',
+  shootingStar:   'Shooting Star ↓',
+  // ─ 2-candle ────────────────────────────────
+  bullEngulfing:  'Engulfing ↑',
+  bearEngulfing:  'Engulfing ↓',
+  bullHarami:     'Harami ↑',
+  bearHarami:     'Harami ↓',
+  tweezersBot:    'Tweezer Bot ↑',
+  tweezersTop:    'Tweezer Top ↓',
+  piercingLine:   'Piercing Line ↑',
+  darkCloud:      'Dark Cloud ↓',
+  onNeck:         'On-Neck ↓',
+  // ─ 3-candle ────────────────────────────────
+  morningStar:    'Morning Star ↑',
+  eveningStar:    'Evening Star ↓',
+  threeWhite:     '3 White Soldiers ↑',
+  threeBlack:     '3 Black Crows ↓',
+};
+
+const PATTERN_DESC = {
+  bullHammer:     'Nến Hammer: bóng dưới dài ≥2× than, bóng trên ngắn. Tín hiệu đảo chiều tăng.',
+  invertedHammer: 'Inverted Hammer: bóng trên dài, bóng dưới ngắn, xuất hiện đáy. Cần xác nhận nến sau.',
+  pinBarBull:     'Pin Bar tăng: bóng dưới chiếm >60% toàn nến. Từ chối giá thấp mạnh.',
+  dojiStar:       'Doji: mở và đóng xấp xỉ nhau. Thị trường lưỡng lự, cần xác nhận chiều.',
+  dragonflyDoji:  'Dragonfly Doji: bóng dưới rất dài, không có bóng trên. Mạnh khi đầu xuống.',
+  gravestoneDoji: 'Gravestone Doji: bóng trên rất dài, không có bóng dưới. Mạnh khi đầu lên.',
+  marubozuBull:   'Marubozu Tăng: không có bóng (hoặc rất ngắn). Lực mua áp đảo hoàn toàn.',
+  marubozuBear:   'Marubozu Giảm: không có bóng (hoặc rất ngắn). Lực bán áp đảo hoàn toàn.',
+  spintop:        'Spinning Top: than nhỏ, bóng 2 bên dài. Không có chiều rõ ràng.',
+  hangingMan:     'Hanging Man: giống Hammer nhưng đứng đầu xu, cảnh báo đảo chiều giảm.',
+  shootingStar:   'Shooting Star: bóng trên dài, xuất hiện đầu lên. Từ chối giá cao mạnh.',
+  bullEngulfing:  'Bull Engulfing: nến xanh bao trùm nến đỏ trước. Đảo chiều tăng mạnh.',
+  bearEngulfing:  'Bear Engulfing: nến đỏ bao trùm nến xanh trước. Đảo chiều giảm mạnh.',
+  bullHarami:     'Bull Harami: nến nhỏ xanh nằm trong than nến đỏ lớn. Cần xác nhận.',
+  bearHarami:     'Bear Harami: nến nhỏ đỏ nằm trong than nến xanh lớn. Cần xác nhận.',
+  tweezersBot:    'Tweezer Bottom: 2 nến có đáy rất gần nhau. Vrùng hỗ trợ mạnh.',
+  tweezersTop:    'Tweezer Top: 2 nến có đỉnh rất gần nhau. Vùng káng cự mạnh.',
+  piercingLine:   'Piercing Line: nến xanh đóng trên 50% than nến đỏ. Đảo chiều tăng.',
+  darkCloud:      'Dark Cloud: nến đỏ mở trên cao, đóng dưới 50% nến xanh. Đảo chiều giảm.',
+  onNeck:         'On-Neck: nến đỏ đóng gần đáy nến xanh trước. Giảm tiếp tục.',
+  morningStar:    'Morning Star: đỏ lớn → Doji → xanh lớn. Đảo chiều tăng rất mạnh.',
+  eveningStar:    'Evening Star: xanh lớn → Doji → đỏ lớn. Đảo chiều giảm rất mạnh.',
+  threeWhite:     '3 White Soldiers: 3 nến xanh tăng liên tiếp, mỗi nến mở cao hơn. Đà tăng mạnh.',
+  threeBlack:     '3 Black Crows: 3 nến đỏ giảm liên tiếp, mỗi nến mở thấp hơn. Đà giảm mạnh.',
 };
 
 const INTERVAL_MS = {
@@ -445,22 +496,193 @@ function findRetest(candles, ema20, ema50, crossIdx, crossType, nextCrossIdx) {
 // ============================================
 // PATTERN DETECTION
 // ============================================
+// ============================================
+// DETECT CANDLESTICK PATTERNS (v2 — 22 patterns)
+// ============================================
+/**
+ * Returns the pattern key string, or null if no pattern matched.
+ * Checks 3-candle → 2-candle → 1-candle (most specific first).
+ * crossType: 'bull' = looking for bullish reversal, 'bear' = bearish reversal.
+ */
 function detectPattern(candles, idx, crossType) {
-  const c = candles[idx]; if (!c) return null;
-  const body  = Math.abs(c.close - c.open);
-  const total = c.high - c.low;
-  const lower = Math.min(c.open, c.close) - c.low;
-  const upper = c.high - Math.max(c.open, c.close);
-  if (total < 1e-10) return null;
-  if (lower / total > 0.6 && crossType === 'bull') return 'pinBarBull';
-  if (body > 0 && lower >= body * 2 && upper < body * 0.5) return crossType === 'bull' ? 'bullHammer' : 'hangingMan';
-  if (body > 0 && upper >= body * 2 && lower < body * 0.5 && crossType === 'bear') return 'shootingStar';
-  if (body / total < 0.08) return 'dojiStar';
-  if (idx > 0) {
-    const p = candles[idx-1], pb = Math.abs(p.close - p.open);
-    if (crossType === 'bull' && p.close < p.open && c.close > c.open && body > pb * 1.1) return 'bullEngulfing';
-    if (crossType === 'bear' && p.close > p.open && c.close < c.open && body > pb * 1.1) return 'bearEngulfing';
+  const c0 = candles[idx]; if (!c0) return null;
+  const c1 = idx >= 1 ? candles[idx - 1] : null;
+  const c2 = idx >= 2 ? candles[idx - 2] : null;
+
+  // Helpers
+  const body    = v => Math.abs(v.close - v.open);
+  const total   = v => v.high - v.low || 1e-10;
+  const lower   = v => Math.min(v.open, v.close) - v.low;
+  const upper   = v => v.high - Math.max(v.open, v.close);
+  const isBull  = v => v.close > v.open;
+  const isBear  = v => v.close < v.open;
+  const midBody = v => (v.open + v.close) / 2;
+  const topBody = v => Math.max(v.open, v.close);
+  const botBody = v => Math.min(v.open, v.close);
+
+  // ──────────────────────────────────────
+  // 3-CANDLE PATTERNS
+  // ──────────────────────────────────────
+  if (c1 && c2) {
+    const b0 = body(c0), b1 = body(c1), b2 = body(c2);
+
+    // Morning Star: c2 bearish large, c1 small body gap down, c0 bullish large
+    if (crossType === 'bull' &&
+        isBear(c2) && b2 > total(c2) * 0.45 &&
+        b1 < b2 * 0.45 && c1.high < topBody(c2) &&
+        isBull(c0) && b0 > b2 * 0.5 && c0.close > midBody(c2)) {
+      return 'morningStar';
+    }
+
+    // Evening Star: c2 bullish large, c1 small gap up, c0 bearish large
+    if (crossType === 'bear' &&
+        isBull(c2) && b2 > total(c2) * 0.45 &&
+        b1 < b2 * 0.45 && c1.low > botBody(c2) &&
+        isBear(c0) && b0 > b2 * 0.5 && c0.close < midBody(c2)) {
+      return 'eveningStar';
+    }
+
+    // Three White Soldiers: 3 consecutive bullish candles, each closes higher
+    if (crossType === 'bull' &&
+        isBull(c2) && isBull(c1) && isBull(c0) &&
+        c0.close > c1.close && c1.close > c2.close &&
+        c0.open > c2.open &&
+        upper(c0) < b0 * 0.4 && upper(c1) < b1 * 0.4) {
+      return 'threeWhite';
+    }
+
+    // Three Black Crows: 3 consecutive bearish candles, each closes lower
+    if (crossType === 'bear' &&
+        isBear(c2) && isBear(c1) && isBear(c0) &&
+        c0.close < c1.close && c1.close < c2.close &&
+        c0.open < c2.open &&
+        lower(c0) < b0 * 0.4 && lower(c1) < b1 * 0.4) {
+      return 'threeBlack';
+    }
   }
+
+  // ──────────────────────────────────────
+  // 2-CANDLE PATTERNS
+  // ──────────────────────────────────────
+  if (c1) {
+    const b0 = body(c0), b1 = body(c1);
+
+    // Bullish Engulfing: prev bear, curr bull bao trùm
+    if (crossType === 'bull' &&
+        isBear(c1) && isBull(c0) &&
+        c0.open <= botBody(c1) && c0.close >= topBody(c1) &&
+        b0 > b1 * 0.8) {
+      return 'bullEngulfing';
+    }
+
+    // Bearish Engulfing: prev bull, curr bear bao trùm
+    if (crossType === 'bear' &&
+        isBull(c1) && isBear(c0) &&
+        c0.open >= topBody(c1) && c0.close <= botBody(c1) &&
+        b0 > b1 * 0.8) {
+      return 'bearEngulfing';
+    }
+
+    // Bullish Harami: c1 bear large, c0 small bull bên trong
+    if (crossType === 'bull' &&
+        isBear(c1) && b1 > total(c1) * 0.4 &&
+        isBull(c0) && b0 < b1 * 0.55 &&
+        botBody(c0) >= botBody(c1) && topBody(c0) <= topBody(c1)) {
+      return 'bullHarami';
+    }
+
+    // Bearish Harami: c1 bull large, c0 small bear bên trong
+    if (crossType === 'bear' &&
+        isBull(c1) && b1 > total(c1) * 0.4 &&
+        isBear(c0) && b0 < b1 * 0.55 &&
+        botBody(c0) >= botBody(c1) && topBody(c0) <= topBody(c1)) {
+      return 'bearHarami';
+    }
+
+    // Tweezer Bottom: 2 nến có đáy rất gần nhau, c1 bear c0 bull
+    if (crossType === 'bull' &&
+        isBear(c1) && isBull(c0) &&
+        Math.abs(c0.low - c1.low) < total(c1) * 0.05) {
+      return 'tweezersBot';
+    }
+
+    // Tweezer Top: 2 nến có đỉnh rất gần nhau, c1 bull c0 bear
+    if (crossType === 'bear' &&
+        isBull(c1) && isBear(c0) &&
+        Math.abs(c0.high - c1.high) < total(c1) * 0.05) {
+      return 'tweezersTop';
+    }
+
+    // Piercing Line: c1 bear, c0 bull mở dưới low c1 và đóng trên 50% thân c1
+    if (crossType === 'bull' &&
+        isBear(c1) && isBull(c0) &&
+        c0.open < c1.low &&
+        c0.close > midBody(c1) && c0.close < topBody(c1)) {
+      return 'piercingLine';
+    }
+
+    // Dark Cloud Cover: c1 bull, c0 bear mở trên high c1 và đóng dưới 50% thân c1
+    if (crossType === 'bear' &&
+        isBull(c1) && isBear(c0) &&
+        c0.open > c1.high &&
+        c0.close < midBody(c1) && c0.close > botBody(c1)) {
+      return 'darkCloud';
+    }
+
+    // On-Neck: c1 bear, c0 bull nhỏ đóng gần đáy c1 (tiếp diễn giảm)
+    if (crossType === 'bear' &&
+        isBear(c1) && isBull(c0) &&
+        Math.abs(c0.close - c1.low) < total(c1) * 0.06 &&
+        b0 < b1 * 0.45) {
+      return 'onNeck';
+    }
+  }
+
+  // ──────────────────────────────────────
+  // 1-CANDLE PATTERNS
+  // ──────────────────────────────────────
+  const b0   = body(c0);
+  const tot0 = total(c0);
+  const lo0  = lower(c0);
+  const up0  = upper(c0);
+
+  // Doji variants (ưu tiên trước khi check hammer/star)
+  const isDoji = b0 / tot0 < 0.08;
+  if (isDoji) {
+    if (lo0 > tot0 * 0.6 && up0 < tot0 * 0.1) return 'dragonflyDoji';  // đuôi dưới dài
+    if (up0 > tot0 * 0.6 && lo0 < tot0 * 0.1) return 'gravestoneDoji'; // đuôi trên dài
+    return 'dojiStar';
+  }
+
+  // Marubozu: gần như không có bóng
+  if (b0 > tot0 * 0.9) {
+    return isBull(c0) ? 'marubozuBull' : 'marubozuBear';
+  }
+
+  // Spinning Top: thân nhỏ, bóng 2 bên tương đương
+  if (b0 / tot0 < 0.25 && lo0 > tot0 * 0.2 && up0 > tot0 * 0.2) {
+    return 'spintop';
+  }
+
+  // Pin Bar Bull: bóng dưới chiếm >60% tổng nến
+  if (lo0 / tot0 > 0.6 && crossType === 'bull') return 'pinBarBull';
+
+  // Hammer (bull): bóng dưới ≥2× thân, bóng trên ngắn
+  if (b0 > 0 && lo0 >= b0 * 2 && up0 < b0 * 0.5) {
+    return crossType === 'bull' ? 'bullHammer' : 'hangingMan';
+  }
+
+  // Inverted Hammer (bull): bóng trên dài, bóng dưới ngắn, xuất hiện đáy
+  if (crossType === 'bull' && b0 > 0 && up0 >= b0 * 2 && lo0 < b0 * 0.5) {
+    return 'invertedHammer';
+  }
+
+  // Shooting Star (bear): bóng trên dài
+  if (crossType === 'bear' && b0 > 0 && up0 >= b0 * 2 && lo0 < b0 * 0.5) {
+    return 'shootingStar';
+  }
+
+  // Fallback: generic signal theo crossType
   return crossType === 'bull' ? 'bullHammer' : 'shootingStar';
 }
 
@@ -1041,12 +1263,30 @@ function renderPatternTable(patternStats) {
   const tbody = document.getElementById('patternTableBody');
   if (!tbody) return;
   tbody.innerHTML = '';
-  patternStats.forEach(p => {
+
+  // Sắp xếp: nhiều giao dịch nhất trước
+  const sorted = [...patternStats].sort((a, b) => b.total - a.total);
+
+  sorted.forEach(p => {
+    const wrc  = p.wr >= 50 ? 'pnl-pos' : 'pnl-neg';
+    const pc   = p.pnl >= 0 ? 'pnl-pos' : 'pnl-neg';
+    const desc = PATTERN_DESC[p.pattern] || '';
+    const dir  = p.name.includes('↑') ? '↑' : p.name.includes('↓') ? '↓' : '—';
+    const dirCol = dir === '↑' ? 'var(--green)' : dir === '↓' ? 'var(--red)' : 'var(--text-muted)';
+
+    // Score màu: WR * PF
+    const score = p.wr * (p.avgPnl > 0 ? Math.min(p.avgPnl / 10, 3) : 0);
+    const quality = score > 100 ? '🔥' : score > 50 ? '⭐' : '';
+
     const tr = document.createElement('tr');
-    const wrc = p.wr >= 50 ? 'pnl-pos' : 'pnl-neg';
-    const pc  = p.pnl >= 0 ? 'pnl-pos' : 'pnl-neg';
+    tr.title = desc;
+    tr.style.cursor = 'help';
     tr.innerHTML = `
-      <td style="color:var(--text)">${p.name}</td>
+      <td style="color:var(--text)">
+        <span style="font-weight:600">${p.name.replace(/[↑↓—]/, '').trim()}</span>
+        <span style="color:${dirCol};margin-left:4px;font-size:11px">${dir}</span>
+        ${quality ? `<span style="margin-left:4px;font-size:10px">${quality}</span>` : ''}
+      </td>
       <td style="color:var(--text-muted)">${p.total}</td>
       <td style="color:var(--green)">${p.wins}</td>
       <td style="color:var(--red)">${p.losses}</td>
@@ -1055,6 +1295,10 @@ function renderPatternTable(patternStats) {
       <td class="${pc}" style="font-weight:700">${p.pnl>=0?'+':'-'}$${Math.abs(p.pnl).toFixed(2)}</td>`;
     tbody.appendChild(tr);
   });
+
+  // Thêm legend tooltip gợi ý
+  const note = document.getElementById('patternTableNote');
+  if (note) note.style.display = sorted.length ? 'block' : 'none';
 }
 
 // ============================================

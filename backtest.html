@@ -153,14 +153,43 @@
       <div class="setting-group">
         <label class="setting-label">Mô hình nến</label>
         <select id="btPattern" class="ctrl-select">
-          <option value="all" selected>Tất cả mô hình</option>
-          <option value="bullHammer">Hammer ↑</option>
-          <option value="hangingMan">Hanging Man</option>
-          <option value="bullEngulfing">Engulfing ↑</option>
-          <option value="bearEngulfing">Engulfing ↓</option>
-          <option value="pinBarBull">Pin Bar ↑</option>
-          <option value="dojiStar">Doji</option>
-          <option value="shootingStar">Shooting Star ↓</option>
+          <option value="all" selected>🕯️ Tất cả mô hình</option>
+          <optgroup label="─── 1 nến (Tăng) ───">
+            <option value="bullHammer">Hammer ↑</option>
+            <option value="invertedHammer">Inv. Hammer ↑</option>
+            <option value="pinBarBull">Pin Bar ↑</option>
+            <option value="dragonflyDoji">Dragonfly Doji ↑</option>
+            <option value="marubozuBull">Marubozu ↑</option>
+          </optgroup>
+          <optgroup label="─── 1 nến (Giảm) ───">
+            <option value="hangingMan">Hanging Man ↓</option>
+            <option value="shootingStar">Shooting Star ↓</option>
+            <option value="gravestoneDoji">Gravestone Doji ↓</option>
+            <option value="marubozuBear">Marubozu ↓</option>
+          </optgroup>
+          <optgroup label="─── 1 nến (Trung tính) ───">
+            <option value="dojiStar">Doji —</option>
+            <option value="spintop">Spinning Top —</option>
+          </optgroup>
+          <optgroup label="─── 2 nến (Tăng) ───">
+            <option value="bullEngulfing">Engulfing ↑</option>
+            <option value="bullHarami">Harami ↑</option>
+            <option value="tweezersBot">Tweezer Bottom ↑</option>
+            <option value="piercingLine">Piercing Line ↑</option>
+          </optgroup>
+          <optgroup label="─── 2 nến (Giảm) ───">
+            <option value="bearEngulfing">Engulfing ↓</option>
+            <option value="bearHarami">Harami ↓</option>
+            <option value="tweezersTop">Tweezer Top ↓</option>
+            <option value="darkCloud">Dark Cloud ↓</option>
+            <option value="onNeck">On-Neck ↓</option>
+          </optgroup>
+          <optgroup label="─── 3 nến ───">
+            <option value="morningStar">Morning Star ↑</option>
+            <option value="eveningStar">Evening Star ↓</option>
+            <option value="threeWhite">3 White Soldiers ↑</option>
+            <option value="threeBlack">3 Black Crows ↓</option>
+          </optgroup>
         </select>
       </div>
 
@@ -334,7 +363,8 @@
     <!-- Pattern Performance -->
     <div class="bt-section">
       <div class="bt-section-header">
-        <h2 class="bt-section-title">🕯 Hiệu Suất Theo Pattern</h2>
+        <h2 class="bt-section-title">🕯️ Hiệu Suất Theo Pattern</h2>
+        <span style="font-size:11px;color:var(--text-muted);font-family:var(--font-mono)">22 mô hình · Hover để xem mô tả · 🔥 = hiệu suất cao</span>
       </div>
       <div class="trade-table-wrap">
         <table class="trade-table">
@@ -344,6 +374,9 @@
           </tr></thead>
           <tbody id="patternTableBody"></tbody>
         </table>
+      </div>
+      <div id="patternTableNote" style="display:none;padding:8px 16px;font-size:10px;color:var(--text-muted);font-family:var(--font-mono)">
+        💡 Hover chuột vào từng dòng để xem mô tả chi tiết pattern. ↑ = tín hiệu tăng · ↓ = tín hiệu giảm · 🔥 WR×AvgPnL cao
       </div>
     </div>
 
