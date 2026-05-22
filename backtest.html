@@ -52,6 +52,10 @@
       <span class="strat-tab-icon">📊</span>
       <span>Bollinger Bands</span>
     </button>
+    <button class="strat-tab" data-strategy-id="false_breakout" onclick="switchStrategy('false_breakout', this)">
+      <span class="strat-tab-icon">🪤</span>
+      <span>False Breakout</span>
+    </button>
     <div class="strat-tab-desc" id="stratTabDesc">EMA 20 cắt EMA 50 + Retest + Mô hình nến đảo chiều</div>
   </div>
 
@@ -270,6 +274,25 @@
           <input id="s_bbStdDev" class="ctrl-input" type="number" value="2" min="1" max="4" step="0.5" style="width:64px" />
         </div>
       </div>
+
+      <!-- False Breakout params -->
+      <div id="params-false_breakout" class="strat-params-panel">
+        <div class="setting-group">
+          <label class="setting-label" title="Số nến nhìn về để xác định swing high/low. Cao hơn = level quan trọng hơn">Lookback</label>
+          <input id="s_fbLookback" class="ctrl-input" type="number" value="20" min="5" max="100" style="width:64px" />
+        </div>
+        <div class="setting-group">
+          <label class="setting-label" title="Giá phải phá vỡ tối thiểu X% qua level mới tính là breakout hợp lệ">Break % min</label>
+          <input id="s_fbBreakoutPct" class="ctrl-input" type="number" value="0.2" min="0.05" max="2" step="0.05" style="width:72px" />
+        </div>
+        <div class="setting-group">
+          <label class="setting-label" title="Yêu cầu phải có mô hình nến đảo chiều tại điểm fakeout">Yêu cầu nến</label>
+          <label class="fb-toggle" title="Tắt = bất kỳ fakeout nào · Bật = phải có mô hình nến xác nhận">
+            <input type="checkbox" id="s_fbRequirePattern" />
+            <span class="fb-toggle-track"></span>
+          </label>
+        </div>
+      </div>
     </div>
 
     <!-- Portfolio coins -->
@@ -401,6 +424,7 @@
           <span class="eq-leg" style="color:#00f5a0;font-size:10px" id="legEMA">— 📈 EMA</span>
           <span class="eq-leg" style="color:#a855f7;font-size:10px;display:none" id="legRSI">— 🔄 RSI</span>
           <span class="eq-leg" style="color:#f97316;font-size:10px;display:none" id="legBB">— 📊 BB</span>
+          <span class="eq-leg" style="color:#ec4899;font-size:10px;display:none" id="legFB">— 🩤 Fakeout</span>
           <span class="eq-leg" style="color:orange;font-size:10px">- - B&amp;H</span>
         </div>
       </div>

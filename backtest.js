@@ -30,6 +30,10 @@ function getStrategyParams(strategyId) {
   } else if (strategyId === 'bb_bounce') {
     extra.bbPeriod = parseInt(document.getElementById('s_bbPeriod')?.value   || 20);
     extra.bbStdDev = parseFloat(document.getElementById('s_bbStdDev')?.value || 2);
+  } else if (strategyId === 'false_breakout') {
+    extra.fbLookback       = parseInt(document.getElementById('s_fbLookback')?.value      || 20);
+    extra.fbBreakoutPct    = parseFloat(document.getElementById('s_fbBreakoutPct')?.value || 0.2);
+    extra.fbRequirePattern = document.getElementById('s_fbRequirePattern')?.checked || false;
   }
   return extra;
 }
@@ -193,6 +197,46 @@ const STRATEGY_REGISTRY = {
         if (!trade) return;
         trade.pattern = pattern;
         trade.bbRef   = sig.bandRef;
+        trades.push(trade);
+        cap += trade.pnl;
+      });
+      return trades;
+    }
+  },
+
+  false_breakout: {
+    id: 'false_breakout',
+    name: 'False Breakout',
+    icon: '🪤',
+    color: '#ec4899',
+    desc: 'Giá phá vỡ N-bar high/low giả rồi đóng cửa trở lại trong range → fade the fakeout',
+    defaultParams: { fbLookback: 20, fbBreakoutPct: 0.2, fbRequirePattern: false },
+    run(candles, params) {
+      const { slMode, slValue, atrPeriod, rrRatio, capital, sizeType, sizeValue,
+              feeRate, maxHoldBars, pattern: filterPattern,
+              fbLookback = 20, fbBreakoutPct = 0.2, fbRequirePattern = false } = params;
+
+      const swings = calcSwingLevels(candles, fbLookback);
+      const atrArr = slMode === 'atr' ? calcATR(candles, atrPeriod) : null;
+      const sigs   = scanFalseBreakouts(candles, swings, fbBreakoutPct / 100);
+
+      const trades = []; let cap = capital;
+      sigs.forEach(sig => {
+        // Phát hiện nến đảo chiều tại điểm fakeout
+        const pattern = detectPattern(candles, sig.index, sig.type)
+          || (sig.type === 'bull' ? 'bullHammer' : 'shootingStar');
+
+        // Nếu bật "yêu cầu xác nhận nến" mà không có pattern → bỏ qua
+        if (fbRequirePattern && !detectPattern(candles, sig.index, sig.type)) return;
+        if (filterPattern && filterPattern !== 'all' && pattern !== filterPattern) return;
+
+        const sigIdx = Math.min(sig.index + 1, candles.length - 1);
+        const trade  = simulateTrade(candles, sigIdx, sig.type, slMode, slValue, atrArr, rrRatio, cap, sizeType, sizeValue, feeRate, maxHoldBars);
+        if (!trade) return;
+        trade.pattern   = pattern;
+        trade.fakeDir   = sig.fakeDir;
+        trade.levelRef  = sig.levelRef;
+        trade.breakPct  = sig.breakPct;
         trades.push(trade);
         cap += trade.pnl;
       });
@@ -715,6 +759,76 @@ function scanBBSignals(candles, bb) {
   return signals;
 }
 
+// ============================================
+// SWING LEVELS (Rolling N-bar Donchian)
+// ============================================
+/**
+ * Trả về swing high/low dựa trên N nến nhìn về trước (lookback).
+ * Không nhìn về tương lai → an toàn cho backtest realtime.
+ * swingHigh[i] = highest high trong [i-lookback, i-1]
+ * swingLow[i]  = lowest low  trong [i-lookback, i-1]
+ */
+function calcSwingLevels(candles, lookback = 20) {
+  const swingHigh = new Array(candles.length).fill(null);
+  const swingLow  = new Array(candles.length).fill(null);
+  for (let i = lookback; i < candles.length; i++) {
+    let maxH = -Infinity, minL = Infinity;
+    for (let j = i - lookback; j < i; j++) {
+      if (candles[j].high > maxH) maxH = candles[j].high;
+      if (candles[j].low  < minL) minL = candles[j].low;
+    }
+    swingHigh[i] = maxH;
+    swingLow[i]  = minL;
+  }
+  return { swingHigh, swingLow };
+}
+
+// ============================================
+// SCAN FALSE BREAKOUT SIGNALS (Fakeout)
+// ============================================
+/**
+ * Phát hiện False Breakout (Fakeout):
+ *
+ * Bull Fakeout → tín hiệu SELL (fade breakout lên):
+ *   - high > swingHigh + breakoutPct% (phá vỡ lên trên đủ xa)
+ *   - close < swingHigh (đóng cửa trở lại bên dưới)  → đảo chiều giảm
+ *
+ * Bear Fakeout → tín hiệu BUY (fade breakout xuống):
+ *   - low < swingLow - breakoutPct% (phá vỡ xuống đủ xa)
+ *   - close > swingLow (đóng cửa trở lại bên trên)  → đảo chiều tăng
+ *
+ * Cooldown: 5 nến giữa 2 tín hiệu để tránh nhiều tín hiệu trong cùng zone
+ */
+function scanFalseBreakouts(candles, swings, breakoutPct = 0.002) {
+  const { swingHigh, swingLow } = swings;
+  const signals = [];
+  let lastSigIdx = -10;
+  for (let i = 1; i < candles.length - 1; i++) {
+    if (!swingHigh[i] || !swingLow[i]) continue;
+    if (i - lastSigIdx < 5) continue;
+    const c = candles[i];
+
+    // Bull Fakeout (fake break lên → SHORT):
+    if (c.high > swingHigh[i] * (1 + breakoutPct) && c.close < swingHigh[i]) {
+      signals.push({
+        index: i, type: 'bear', fakeDir: 'up',
+        levelRef: swingHigh[i],
+        breakPct: +((c.high / swingHigh[i] - 1) * 100).toFixed(3),
+      });
+      lastSigIdx = i;
+    }
+    // Bear Fakeout (fake break xuống → LONG):
+    else if (c.low < swingLow[i] * (1 - breakoutPct) && c.close > swingLow[i]) {
+      signals.push({
+        index: i, type: 'bull', fakeDir: 'down',
+        levelRef: swingLow[i],
+        breakPct: +((1 - c.low / swingLow[i]) * 100).toFixed(3),
+      });
+      lastSigIdx = i;
+    }
+  }
+  return signals;
+}
 
 // ============================================
 // RETEST
@@ -2437,7 +2551,7 @@ function switchStrategy(strategyId, tabEl) {
   }
 
   // Update equity curve legend visibility
-  const legends = { ema_crossover: 'legEMA', rsi_reversal: 'legRSI', bb_bounce: 'legBB' };
+  const legends = { ema_crossover: 'legEMA', rsi_reversal: 'legRSI', bb_bounce: 'legBB', false_breakout: 'legFB' };
   Object.values(legends).forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = 'none';

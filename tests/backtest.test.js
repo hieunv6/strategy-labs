@@ -370,6 +370,158 @@ test('24 bars 1h → ~1d', () => {
   assert(s.includes('~1d'), `Expected ~1d in "${s}"`);
 });
 
+// ─── calcSwingLevels Tests ────────────────────────────────────────────────────
+// Inline implementation (mirrors backtest.js exactly)
+function calcSwingLevels(candles, lookback = 20) {
+  const swingHigh = new Array(candles.length).fill(null);
+  const swingLow  = new Array(candles.length).fill(null);
+  for (let i = lookback; i < candles.length; i++) {
+    let maxH = -Infinity, minL = Infinity;
+    for (let j = i - lookback; j < i; j++) {
+      if (candles[j].high > maxH) maxH = candles[j].high;
+      if (candles[j].low  < minL) minL = candles[j].low;
+    }
+    swingHigh[i] = maxH;
+    swingLow[i]  = minL;
+  }
+  return { swingHigh, swingLow };
+}
+
+function scanFalseBreakouts(candles, swings, breakoutPct = 0.002) {
+  const { swingHigh, swingLow } = swings;
+  const signals = [];
+  let lastSigIdx = -10;
+  for (let i = 1; i < candles.length - 1; i++) {
+    if (!swingHigh[i] || !swingLow[i]) continue;
+    if (i - lastSigIdx < 5) continue;
+    const c = candles[i];
+    if (c.high > swingHigh[i] * (1 + breakoutPct) && c.close < swingHigh[i]) {
+      signals.push({ index: i, type: 'bear', fakeDir: 'up',
+        levelRef: swingHigh[i], breakPct: +((c.high / swingHigh[i] - 1) * 100).toFixed(3) });
+      lastSigIdx = i;
+    } else if (c.low < swingLow[i] * (1 - breakoutPct) && c.close > swingLow[i]) {
+      signals.push({ index: i, type: 'bull', fakeDir: 'down',
+        levelRef: swingLow[i], breakPct: +((1 - c.low / swingLow[i]) * 100).toFixed(3) });
+      lastSigIdx = i;
+    }
+  }
+  return signals;
+}
+
+console.log('\n📐 calcSwingLevels');
+
+test('Returns arrays with same length as candles', () => {
+  const c = makeFlatCandles(50, 100);
+  const { swingHigh, swingLow } = calcSwingLevels(c, 10);
+  assert(swingHigh.length === 50, `Expected 50, got ${swingHigh.length}`);
+  assert(swingLow.length  === 50, `Expected 50, got ${swingLow.length}`);
+});
+
+test('First lookback values are null (no look-ahead)', () => {
+  const c = makeFlatCandles(50, 100);
+  const { swingHigh, swingLow } = calcSwingLevels(c, 20);
+  for (let i = 0; i < 20; i++) {
+    assert(swingHigh[i] === null, `swingHigh[${i}] should be null`);
+    assert(swingLow[i]  === null, `swingLow[${i}] should be null`);
+  }
+  assert(swingHigh[20] !== null, 'swingHigh[20] should have a value');
+});
+
+test('swingHigh equals max high in lookback window', () => {
+  // Build candles where only bar 3 has a spike
+  const candles = Array.from({ length: 30 }, (_, i) => ({
+    time: i * 14400000,
+    open: 100, high: i === 3 ? 200 : 101, low: 99, close: 100, volume: 1000
+  }));
+  const { swingHigh } = calcSwingLevels(candles, 10);
+  // At index 13, window is [3..12] — bar 3's high of 200 included
+  assertClose(swingHigh[13], 200, 0.01, 'swingHigh[13] ');
+  // At index 20, window is [10..19] — bar 3 excluded → max is 101
+  assertClose(swingHigh[20], 101, 0.01, 'swingHigh[20] ');
+});
+
+test('swingLow equals min low in lookback window', () => {
+  const candles = Array.from({ length: 30 }, (_, i) => ({
+    time: i * 14400000,
+    open: 100, high: 101, low: i === 5 ? 50 : 99, close: 100, volume: 1000
+  }));
+  const { swingLow } = calcSwingLevels(candles, 10);
+  // At index 15, window [5..14] includes the spike down → min should be 50
+  assertClose(swingLow[15], 50, 0.01, 'swingLow[15] ');
+  // At index 20, window [10..19] — bar 5 excluded → min is 99
+  assertClose(swingLow[20], 99, 0.01, 'swingLow[20] ');
+});
+
+console.log('\n📐 scanFalseBreakouts');
+
+test('Detects bull fakeout (fake break down → BUY signal)', () => {
+  // 25 bars at 100, then 1 bar that pokes below the 20-bar low (swingLow ≈ 99)
+  // but closes back above it
+  const candles = Array.from({ length: 27 }, (_, i) => {
+    if (i === 25) return { time: i*14400000, open: 100, high: 101, low: 98.0, close: 100.5, volume: 1000 };
+    return { time: i*14400000, open: 100, high: 101, low: 99, close: 100, volume: 1000 };
+  });
+  const swings  = calcSwingLevels(candles, 20);
+  const signals = scanFalseBreakouts(candles, swings, 0.002);
+  const bullSigs = signals.filter(s => s.type === 'bull');
+  assert(bullSigs.length >= 1, `Expected ≥1 bull signal, got ${bullSigs.length}`);
+  assert(bullSigs[0].fakeDir === 'down', 'Bull fakeout fakeDir should be "down"');
+});
+
+test('Detects bear fakeout (fake break up → SELL signal)', () => {
+  // 25 bars at 100 (high=101), then 1 bar that pokes above 20-bar high (101)
+  // but closes back below
+  const candles = Array.from({ length: 27 }, (_, i) => {
+    if (i === 25) return { time: i*14400000, open: 100, high: 102.5, low: 99, close: 100.0, volume: 1000 };
+    return { time: i*14400000, open: 100, high: 101, low: 99, close: 100, volume: 1000 };
+  });
+  const swings  = calcSwingLevels(candles, 20);
+  const signals = scanFalseBreakouts(candles, swings, 0.002);
+  const bearSigs = signals.filter(s => s.type === 'bear');
+  assert(bearSigs.length >= 1, `Expected ≥1 bear signal, got ${bearSigs.length}`);
+  assert(bearSigs[0].fakeDir === 'up', 'Bear fakeout fakeDir should be "up"');
+});
+
+test('No signal when breakout is below minimum pct threshold', () => {
+  // Breakout pct = 2%, but price only barely pierces the level (0.05%)
+  const candles = Array.from({ length: 27 }, (_, i) => {
+    if (i === 25) return { time: i*14400000, open: 100, high: 101.05, low: 99, close: 100.0, volume: 1000 };
+    return { time: i*14400000, open: 100, high: 101, low: 99, close: 100, volume: 1000 };
+  });
+  const swings  = calcSwingLevels(candles, 20);
+  const signals = scanFalseBreakouts(candles, swings, 0.02); // 2% threshold
+  const bearSigs = signals.filter(s => s.type === 'bear');
+  assert(bearSigs.length === 0, `Expected 0 signals below threshold, got ${bearSigs.length}`);
+});
+
+test('No signal when price closes ABOVE resistance (real breakout)', () => {
+  // Price breaks above swingHigh AND closes above → real breakout, not fakeout
+  const candles = Array.from({ length: 27 }, (_, i) => {
+    if (i === 25) return { time: i*14400000, open: 100, high: 104, low: 99, close: 103, volume: 1000 };
+    return { time: i*14400000, open: 100, high: 101, low: 99, close: 100, volume: 1000 };
+  });
+  const swings  = calcSwingLevels(candles, 20);
+  const signals = scanFalseBreakouts(candles, swings, 0.002);
+  const bearSigs = signals.filter(s => s.type === 'bear');
+  assert(bearSigs.length === 0, `Real breakout should NOT trigger fakeout signal, got ${bearSigs.length}`);
+});
+
+test('Cooldown: no two signals within 5 bars', () => {
+  // Craft two adjacent fakeouts at bars 25 and 28
+  const candles = Array.from({ length: 40 }, (_, i) => {
+    if (i === 25 || i === 28)
+      return { time: i*14400000, open: 100, high: 102.5, low: 99, close: 100.0, volume: 1000 };
+    return { time: i*14400000, open: 100, high: 101, low: 99, close: 100, volume: 1000 };
+  });
+  const swings  = calcSwingLevels(candles, 20);
+  const signals = scanFalseBreakouts(candles, swings, 0.002);
+  // Bar 25 and 28 are only 3 apart → cooldown should suppress bar 28
+  const at25 = signals.filter(s => s.index === 25);
+  const at28 = signals.filter(s => s.index === 28);
+  assert(at25.length === 1, 'Signal at bar 25 expected');
+  assert(at28.length === 0, 'Signal at bar 28 should be suppressed by cooldown');
+});
+
 // ─── Summary ──────────────────────────────────────────────────────────────────
 console.log('\n' + results.join('\n'));
 console.log(`\n${'─'.repeat(44)}`);
