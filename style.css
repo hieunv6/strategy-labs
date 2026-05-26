@@ -308,7 +308,7 @@ body {
 .strategy-bar {
   background: var(--bg2);
   border-bottom: 1px solid var(--border);
-  padding: 0 24px;
+  padding: 0 16px;
 }
 
 .strategy-bar-inner {
@@ -317,19 +317,19 @@ body {
   display: flex;
   align-items: center;
   gap: 0;
-  padding: 16px 0;
+  padding: 8px 0;
   overflow-x: auto;
 }
 
 .strategy-step {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 14px 20px;
-  border-radius: var(--radius);
+  gap: 10px;
+  padding: 9px 14px;
+  border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--bg3);
-  min-width: 180px;
+  min-width: 148px;
   transition: var(--transition);
   position: relative;
   flex-shrink: 0;
@@ -349,7 +349,7 @@ body {
 
 .step-num {
   font-family: var(--font-mono);
-  font-size: 22px;
+  font-size: 15px;
   font-weight: 700;
   color: var(--text-muted);
   line-height: 1;
@@ -360,12 +360,13 @@ body {
 }
 
 .step-title {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--text);
 }
 
 .step-desc {
+  display: none;
   font-size: 11px;
   color: var(--text-dim);
   line-height: 1.4;
@@ -374,8 +375,8 @@ body {
 
 .step-arrow {
   color: var(--text-muted);
-  font-size: 18px;
-  padding: 0 12px;
+  font-size: 14px;
+  padding: 0 8px;
   flex-shrink: 0;
 }
 
@@ -383,25 +384,29 @@ body {
 .main-content {
   max-width: 1600px;
   margin: 0 auto;
-  padding: 24px;
+  padding: 14px 16px;
   display: grid;
-  grid-template-columns: 1fr 280px;
-  gap: 20px;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 14px;
   align-items: start;
+  height: calc(100vh - 62px - 58px);
+  min-height: 560px;
+  overflow: hidden;
 }
 
 /* === CHART PANEL === */
 .chart-panel {
   background: var(--bg2);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius);
   overflow: hidden;
   position: relative;
   box-shadow: var(--shadow-lg);
+  height: 100%;
 }
 
 .panel-header {
-  padding: 16px 20px;
+  padding: 11px 14px;
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
@@ -470,15 +475,20 @@ body {
 .right-panel {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 10px;
+  max-height: 100%;
+  overflow-y: auto;
+  padding-right: 2px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
 }
 
 /* === SIGNAL BOX === */
 .signal-box {
   background: var(--bg3);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 24px 20px;
+  border-radius: var(--radius);
+  padding: 16px 14px;
   text-align: center;
   transition: var(--transition);
   box-shadow: var(--inner-glow), var(--shadow-lg);
@@ -510,7 +520,7 @@ body {
 
 .signal-value {
   font-family: var(--font-mono);
-  font-size: 32px;
+  font-size: 28px;
   font-weight: 700;
   letter-spacing: 2px;
   color: var(--text-dim);
@@ -540,8 +550,8 @@ body {
 .info-card {
   background: var(--bg2);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 18px;
+  border-radius: var(--radius);
+  padding: 12px;
   box-shadow: var(--inner-glow), var(--shadow-lg);
   transition: var(--transition);
 }
@@ -554,16 +564,16 @@ body {
   font-size: 12px;
   font-weight: 600;
   color: var(--text-dim);
-  margin-bottom: 12px;
+  margin-bottom: 9px;
   letter-spacing: 0.3px;
 }
 
 /* Candle Pattern */
 .candle-pattern-display {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 1fr 78px;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .pattern-name {
@@ -571,16 +581,24 @@ body {
   font-size: 14px;
   font-weight: 600;
   color: var(--accent);
+  grid-column: 1;
+  grid-row: 1;
 }
 
 .pattern-desc {
   font-size: 11px;
   color: var(--text-dim);
-  text-align: center;
+  text-align: left;
   line-height: 1.4;
+  grid-column: 1;
+  grid-row: 2;
 }
 
 #candlePatternCanvas {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  width: 78px;
+  height: 92px;
   border-radius: 8px;
   background: var(--bg3);
   border: 1px solid var(--border);
@@ -597,7 +615,7 @@ body {
 .ema-stat {
   background: var(--bg3);
   border-radius: 8px;
-  padding: 10px 12px;
+  padding: 8px 10px;
   border: 1px solid var(--border);
   box-shadow: var(--inner-glow);
 }
@@ -626,7 +644,7 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 12px;
+  padding: 8px 10px;
   background: var(--bg3);
   border-radius: 8px;
   border: 1px solid var(--border);
@@ -661,7 +679,7 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 12px;
+  padding: 8px 10px;
   border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--bg3);
@@ -703,39 +721,74 @@ body {
 /* === PATTERNS SECTION === */
 .patterns-section {
   max-width: 1600px;
-  margin: 0 auto 40px;
-  padding: 0 24px;
+  margin: 0 auto 24px;
+  padding: 0 16px;
 }
 
 .patterns-header {
-  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  list-style: none;
+  cursor: pointer;
+  margin-bottom: 0;
   border-top: 1px solid var(--border);
-  padding-top: 32px;
+  padding: 12px 0;
 }
 
-.patterns-header h2 {
-  font-size: 20px;
+.patterns-header::-webkit-details-marker {
+  display: none;
+}
+
+.patterns-header strong {
+  display: block;
+  font-size: 14px;
   font-weight: 700;
   color: var(--text);
-  margin-bottom: 6px;
 }
 
-.patterns-header p {
-  font-size: 13px;
+.patterns-header small {
+  display: block;
+  font-size: 12px;
   color: var(--text-dim);
+  margin-top: 2px;
+}
+
+.patterns-toggle {
+  flex-shrink: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--border-bright);
+  border-radius: 7px;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.patterns-section[open] .patterns-toggle {
+  color: var(--text-dim);
+}
+
+.patterns-toggle::before {
+  content: 'Mở ';
+}
+
+.patterns-section[open] .patterns-toggle::before {
+  content: 'Đóng ';
 }
 
 .patterns-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+  padding-bottom: 12px;
 }
 
 .pattern-card {
   background: var(--bg2);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 18px;
+  padding: 12px;
   text-align: center;
   cursor: pointer;
   transition: var(--transition);
@@ -840,10 +893,15 @@ body {
 @media (max-width: 1100px) {
   .main-content {
     grid-template-columns: 1fr;
+    height: auto;
+    min-height: 0;
+    overflow: visible;
   }
   .right-panel {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    max-height: none;
+    overflow: visible;
   }
 }
 

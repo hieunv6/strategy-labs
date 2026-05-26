@@ -303,7 +303,9 @@ function renderChart(candles, ema20, ema50, crossover, retest, signal) {
   const canvas = document.getElementById('chartCanvas');
   const dpr = window.devicePixelRatio || 1;
   const W = canvas.parentElement.offsetWidth;
-  const H = Math.max(340, Math.min(520, window.innerHeight * 0.48));
+  const headerH = canvas.previousElementSibling?.offsetHeight || 0;
+  const availableH = canvas.parentElement.clientHeight - headerH;
+  const H = Math.max(360, Math.min(720, availableH || window.innerHeight * 0.52));
   canvas.width = W * dpr;
   canvas.height = H * dpr;
   canvas.style.width = W + 'px';

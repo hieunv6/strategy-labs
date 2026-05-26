@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Backtest — EMA 20/50 Strategy</title>
-  <meta name="description" content="Backtest chiến lược giao dịch EMA 20/50: crossover, retest, mô hình nến đảo chiều" />
+  <title>Coinmap Strategy Lab Dashboard</title>
+  <meta name="description" content="Coinmap Strategy Lab Dashboard - Thử nghiệm và Tối ưu hóa các chiến lược giao dịch" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -14,625 +14,838 @@
 <body>
   <div id="grain-overlay"></div>
 
-  <!-- Header -->
-  <header id="main-header">
-    <div class="header-inner">
-      <div class="logo-block">
-        <div class="logo-mark">
-          <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
-            <path d="M4 24 L14 4 L24 24" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-            <path d="M8 18 L20 18" stroke="var(--accent-dim)" stroke-width="1.5" stroke-linecap="round"/>
-            <circle cx="14" cy="4" r="2" fill="var(--accent)"/>
+  <div class="app-layout">
+    <!-- Left Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-brand">
+        <div class="sidebar-logo-text">
+          <svg width="22" height="22" viewBox="0 0 28 28" fill="none" style="vertical-align: middle;">
+            <path d="M4 24 L14 4 L24 24" stroke="var(--accent-green)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            <path d="M8 18 L20 18" stroke="rgba(16, 185, 129, 0.4)" stroke-width="1.5" stroke-linecap="round"/>
+            <circle cx="14" cy="4" r="2" fill="var(--accent-green)"/>
           </svg>
+          <span class="sidebar-brand-name">StrategyLab</span>
         </div>
-        <div>
-          <div class="logo-text">EMA Strategy</div>
-          <div class="logo-sub">Backtest Engine</div>
+        <button class="sidebar-collapse-btn" type="button" title="Thu gọn sidebar" onclick="toggleSidebarCollapsed()">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+        </button>
+        <div class="sidebar-logo-sub">Coinmap Analytics</div>
+      </div>
+      
+      <div class="sidebar-scroll">
+        <!-- Group OVERVIEW -->
+        <div class="nav-group">
+          <div class="nav-group-title">Overview</div>
+          <a href="#" class="nav-item">
+            <span class="nav-item-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+            </span>
+            Dashboard
+          </a>
+          <a href="#" class="nav-item">
+            <span class="nav-item-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/><path d="M2 12h20"/></svg>
+            </span>
+            X-Ray Analytics
+          </a>
         </div>
-      </div>
-      <div class="header-controls">
-        <a href="index.html" class="btn-nav">← Live Chart</a>
-        <span class="live-badge">📊 BACKTEST</span>
-      </div>
-    </div>
-  </header>
 
-  <!-- Settings Panel -->
-  <!-- Strategy Tab Bar -->
-  <div class="strategy-tab-bar" id="stratTabBar">
-    <button class="strat-tab active" data-strategy-id="ema_crossover" onclick="switchStrategy('ema_crossover', this)">
-      <span class="strat-tab-icon">📈</span>
-      <span>EMA 20/50</span>
-    </button>
-    <button class="strat-tab" data-strategy-id="rsi_reversal" onclick="switchStrategy('rsi_reversal', this)">
-      <span class="strat-tab-icon">🔄</span>
-      <span>RSI Reversal</span>
-    </button>
-    <button class="strat-tab" data-strategy-id="bb_bounce" onclick="switchStrategy('bb_bounce', this)">
-      <span class="strat-tab-icon">📊</span>
-      <span>Bollinger Bands</span>
-    </button>
-    <button class="strat-tab" data-strategy-id="false_breakout" onclick="switchStrategy('false_breakout', this)">
-      <span class="strat-tab-icon">🪤</span>
-      <span>False Breakout</span>
-    </button>
-    <div class="strat-tab-divider">| Trend Following |</div>
-    <button class="strat-tab" data-strategy-id="macd_crossover" onclick="switchStrategy('macd_crossover', this)">
-      <span class="strat-tab-icon">📉</span>
-      <span>MACD</span>
-    </button>
-    <button class="strat-tab" data-strategy-id="supertrend" onclick="switchStrategy('supertrend', this)">
-      <span class="strat-tab-icon">🔱</span>
-      <span>Supertrend</span>
-    </button>
-    <button class="strat-tab" data-strategy-id="donchian_breakout" onclick="switchStrategy('donchian_breakout', this)">
-      <span class="strat-tab-icon">📦</span>
-      <span>Donchian</span>
-    </button>
-    <button class="strat-tab" data-strategy-id="turtle_trading" onclick="switchStrategy('turtle_trading', this)">
-      <span class="strat-tab-icon">🐢</span>
-      <span>Turtle</span>
-    </button>
-    <div class="strat-tab-desc" id="stratTabDesc">EMA 20 cắt EMA 50 + Retest + Mô hình nến đảo chiều</div>
-  </div>
-
-  <div class="bt-settings-bar">
-    <div class="bt-settings-inner">
-
-      <!-- Mode toggle -->
-      <div class="setting-group">
-        <label class="setting-label">Chế độ</label>
-        <div class="mode-toggle">
-          <button id="modeSingle" class="mode-btn active" onclick="toggleMode('single')">Đơn</button>
-          <button id="modePortfolio" class="mode-btn" onclick="toggleMode('portfolio')">Danh mục</button>
+        <!-- Group BUILD COMPONENTS -->
+        <div class="nav-group">
+          <div class="nav-group-title">Build Components</div>
+          <a href="#" class="nav-item">
+            <span class="nav-item-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+            </span>
+            Indicators
+          </a>
+          <a href="#" class="nav-item">
+            <span class="nav-item-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/><path d="M15 3v18"/><path d="M3 9h18"/><path d="M3 15h18"/></svg>
+            </span>
+            Strategy Blocks
+          </a>
         </div>
-      </div>
 
-      <!-- Single symbol -->
-      <div id="singleSymbolWrap" class="setting-group symbol-search-group">
-        <label class="setting-label">Symbol</label>
-        <div class="symbol-search-wrap" id="symbolSearchWrap">
-          <input id="btSymbol" class="ctrl-input symbol-input" type="text"
-            placeholder="Tìm coin... BTC" autocomplete="off" spellcheck="false" value="BTCUSDT"
-            oninput="onATRParamChange()" />
-          <div class="symbol-dropdown" id="symbolDropdown"></div>
+        <!-- Group ASSEMBLE MODELS -->
+        <div class="nav-group">
+          <div class="nav-group-title">Assemble Models</div>
+          <a href="#" class="nav-item">
+            <span class="nav-item-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+            </span>
+            Model Studio
+          </a>
+          <a href="#" class="nav-item">
+            <span class="nav-item-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+            </span>
+            Portfolio Mix
+          </a>
         </div>
-      </div>
 
-      <!-- Timeframe -->
-      <div class="setting-group">
-        <label class="setting-label">Timeframe</label>
-        <select id="btInterval" class="ctrl-select" onchange="onATRParamChange()">
-          <option value="15m">15 phút</option>
-          <option value="1h">1 giờ</option>
-          <option value="4h" selected>4 giờ</option>
-          <option value="1d">1 ngày</option>
-        </select>
-      </div>
-
-      <!-- Date Pickers -->
-      <div class="setting-group">
-        <label class="setting-label">Từ ngày</label>
-        <input type="date" id="btStartDate" class="ctrl-input date-input" />
-      </div>
-
-      <div class="setting-group">
-        <label class="setting-label">Đến ngày</label>
-        <input type="date" id="btEndDate" class="ctrl-input date-input" />
-      </div>
-
-      <!-- SL Type -->
-      <div class="setting-group">
-        <label class="setting-label">Loại Stop Loss</label>
-        <div class="mode-toggle">
-          <button id="slModeFixed" class="mode-btn active" onclick="toggleSLMode('fixed')">Fixed %</button>
-          <button id="slModeATR" class="mode-btn" onclick="toggleSLMode('atr')">ATR×</button>
+        <!-- Group TEST & OPTIMIZE -->
+        <div class="nav-group">
+          <div class="nav-group-title">Test &amp; Optimize</div>
+          <a href="backtest.html" class="nav-item active">
+            <span class="nav-item-icon" style="color:var(--accent-green)">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+            </span>
+            Lab
+          </a>
+          <a href="#" class="nav-item">
+            <span class="nav-item-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+            </span>
+            HyperParameter Tuner
+          </a>
         </div>
-      </div>
 
-      <!-- Fixed SL -->
-      <div id="slFixedWrap" class="setting-group">
-        <label class="setting-label">SL %</label>
-        <select id="btSL" class="ctrl-select">
-          <option value="0.01">1.0%</option>
-          <option value="0.015" selected>1.5%</option>
-          <option value="0.02">2.0%</option>
-          <option value="0.03">3.0%</option>
-          <option value="0.05">5.0%</option>
-        </select>
-      </div>
-
-      <!-- ATR SL -->
-      <div id="slATRWrap" class="setting-group" style="display:none">
-        <label class="setting-label">ATR Period</label>
-        <input id="atrPeriod" class="ctrl-input" type="number" value="14" min="5" max="50"
-          style="width:64px" oninput="onATRParamChange()" />
-      </div>
-      <div id="slATRMultWrap" class="setting-group" style="display:none">
-        <label class="setting-label">ATR Mult ×</label>
-        <input id="atrMult" class="ctrl-input" type="number" value="1.5" min="0.5" max="5" step="0.1"
-          style="width:64px" oninput="onATRParamChange()" />
-      </div>
-
-      <div class="setting-group">
-        <label class="setting-label">R:R Ratio</label>
-        <select id="btRR" class="ctrl-select">
-          <option value="1.5">1 : 1.5</option>
-          <option value="2" selected>1 : 2</option>
-          <option value="2.5">1 : 2.5</option>
-          <option value="3">1 : 3</option>
-        </select>
-      </div>
-
-      <div class="setting-group">
-        <label class="setting-label">Vốn ban đầu</label>
-        <select id="btCapital" class="ctrl-select">
-          <option value="1000">$1,000</option>
-          <option value="5000">$5,000</option>
-          <option value="10000" selected>$10,000</option>
-          <option value="100000">$100,000</option>
-        </select>
-      </div>
-
-      <div class="setting-group">
-        <label class="setting-label">Kiểu phân bổ</label>
-        <select id="btSizeType" class="ctrl-select" onchange="onSizeTypeChange()">
-          <option value="risk" selected>Rủi ro % SL</option>
-          <option value="percent">% Vốn/lệnh</option>
-          <option value="fixed">Số tiền cố định</option>
-        </select>
-      </div>
-
-      <div class="setting-group">
-        <label class="setting-label" id="lblSizeValue">Rủi ro %</label>
-        <input id="btSizeValue" class="ctrl-input" type="number" value="2" min="0.01" step="any" style="width:75px" />
-      </div>
-
-      <div class="setting-group">
-        <label class="setting-label">Mô hình nến</label>
-        <select id="btPattern" class="ctrl-select">
-          <option value="all" selected>🕯️ Tất cả mô hình</option>
-          <optgroup label="─── 1 nến (Tăng) ───">
-            <option value="bullHammer">Hammer ↑</option>
-            <option value="invertedHammer">Inv. Hammer ↑</option>
-            <option value="pinBarBull">Pin Bar ↑</option>
-            <option value="dragonflyDoji">Dragonfly Doji ↑</option>
-            <option value="marubozuBull">Marubozu ↑</option>
-          </optgroup>
-          <optgroup label="─── 1 nến (Giảm) ───">
-            <option value="hangingMan">Hanging Man ↓</option>
-            <option value="shootingStar">Shooting Star ↓</option>
-            <option value="gravestoneDoji">Gravestone Doji ↓</option>
-            <option value="marubozuBear">Marubozu ↓</option>
-          </optgroup>
-          <optgroup label="─── 1 nến (Trung tính) ───">
-            <option value="dojiStar">Doji —</option>
-            <option value="spintop">Spinning Top —</option>
-          </optgroup>
-          <optgroup label="─── 2 nến (Tăng) ───">
-            <option value="bullEngulfing">Engulfing ↑</option>
-            <option value="bullHarami">Harami ↑</option>
-            <option value="tweezersBot">Tweezer Bottom ↑</option>
-            <option value="piercingLine">Piercing Line ↑</option>
-          </optgroup>
-          <optgroup label="─── 2 nến (Giảm) ───">
-            <option value="bearEngulfing">Engulfing ↓</option>
-            <option value="bearHarami">Harami ↓</option>
-            <option value="tweezersTop">Tweezer Top ↓</option>
-            <option value="darkCloud">Dark Cloud ↓</option>
-            <option value="onNeck">On-Neck ↓</option>
-          </optgroup>
-          <optgroup label="─── 3 nến ───">
-            <option value="morningStar">Morning Star ↑</option>
-            <option value="eveningStar">Evening Star ↓</option>
-            <option value="threeWhite">3 White Soldiers ↑</option>
-            <option value="threeBlack">3 Black Crows ↓</option>
-          </optgroup>
-        </select>
-      </div>
-
-      <!-- Fee Rate -->
-      <div class="setting-group">
-        <label class="setting-label" title="Phí giao dịch round-trip (vào + thoát). Binance Spot mặc định 0.1% × 2 chiều">Phí GD %</label>
-        <input id="btFeeRate" class="ctrl-input" type="number" value="0.1" min="0" max="1" step="0.01" style="width:64px" title="0 = không tính phí · 0.1 = Binance Spot · 0.04 = VIP" />
-      </div>
-
-      <!-- Max Hold Bars -->
-      <div class="setting-group">
-        <label class="setting-label" title="Số nến tối đa giữ lệnh nếu không đạt SL/TP. Mặc định 80 nến.">Max Hold</label>
-        <input id="btMaxHold" class="ctrl-input" type="number" value="80" min="10" max="500" step="10" style="width:64px" title="80 nến 4h ≈ 13 ngày · 120 nến 4h ≈ 20 ngày" />
-      </div>
-
-      <button class="btn-run" id="btnRun" onclick="runBacktest()">
-        <span id="btnRunText">▶ Chạy Backtest</span>
-      </button>
-
-      <div class="loading-dot" id="loadingDot"></div>
-    </div>
-
-    <!-- Strategy-specific param panels -->
-    <div class="strategy-params-bar" id="stratParamsBar">
-      <!-- EMA Crossover params -->
-      <div id="params-ema_crossover" class="strat-params-panel active">
-        <div class="setting-group">
-          <label class="setting-label">Fast EMA</label>
-          <input id="s_fastEMA" class="ctrl-input" type="number" value="20" min="5" max="50" style="width:64px" />
+        <!-- Group HUB -->
+        <div class="nav-group">
+          <div class="nav-group-title">Hub</div>
+          <a href="#" class="nav-item">
+            <span class="nav-item-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            </span>
+            Community Strats
+          </a>
+          <a href="#" class="nav-item">
+            <span class="nav-item-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+            </span>
+            Store
+          </a>
         </div>
-        <div class="setting-group">
-          <label class="setting-label">Slow EMA</label>
-          <input id="s_slowEMA" class="ctrl-input" type="number" value="50" min="10" max="200" style="width:64px" />
+
+        <!-- Group COMMUNICATION -->
+        <div class="nav-group">
+          <div class="nav-group-title">Communication</div>
+          <a href="#" class="nav-item">
+            <span class="nav-item-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+            </span>
+            Inbox
+          </a>
+          <a href="#" class="nav-item">
+            <span class="nav-item-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            </span>
+            Settings
+          </a>
         </div>
       </div>
+    </aside>
 
-      <!-- RSI Reversal params -->
-      <div id="params-rsi_reversal" class="strat-params-panel">
-        <div class="setting-group">
-          <label class="setting-label">RSI Period</label>
-          <input id="s_rsiPeriod" class="ctrl-input" type="number" value="14" min="2" max="50" style="width:64px" />
-        </div>
-        <div class="setting-group">
-          <label class="setting-label">Oversold</label>
-          <input id="s_oversold" class="ctrl-input" type="number" value="30" min="10" max="45" style="width:64px" />
-        </div>
-        <div class="setting-group">
-          <label class="setting-label">Overbought</label>
-          <input id="s_overbought" class="ctrl-input" type="number" value="70" min="55" max="90" style="width:64px" />
-        </div>
-      </div>
-
-      <!-- Bollinger Bands params -->
-      <div id="params-bb_bounce" class="strat-params-panel">
-        <div class="setting-group">
-          <label class="setting-label">BB Period</label>
-          <input id="s_bbPeriod" class="ctrl-input" type="number" value="20" min="5" max="50" style="width:64px" />
-        </div>
-        <div class="setting-group">
-          <label class="setting-label">Std Dev</label>
-          <input id="s_bbStdDev" class="ctrl-input" type="number" value="2" min="1" max="4" step="0.5" style="width:64px" />
-        </div>
-      </div>
-
-      <!-- False Breakout params -->
-      <div id="params-false_breakout" class="strat-params-panel">
-        <div class="setting-group">
-          <label class="setting-label" title="Số nến nhìn về để xác định swing high/low. Cao hơn = level quan trọng hơn">Lookback</label>
-          <input id="s_fbLookback" class="ctrl-input" type="number" value="20" min="5" max="100" style="width:64px" />
-        </div>
-        <div class="setting-group">
-          <label class="setting-label" title="Giá phải phá vỡ tối thiểu X% qua level mới tính là breakout hợp lệ">Break % min</label>
-          <input id="s_fbBreakoutPct" class="ctrl-input" type="number" value="0.2" min="0.05" max="2" step="0.05" style="width:72px" />
-        </div>
-        <div class="setting-group">
-          <label class="setting-label" title="Yêu cầu phải có mô hình nến đảo chiều tại điểm fakeout">Yêu cầu nến</label>
-          <label class="fb-toggle" title="Tắt = bất kỳ fakeout nào · Bật = phải có mô hình nến xác nhận">
-            <input type="checkbox" id="s_fbRequirePattern" />
-            <span class="fb-toggle-track"></span>
-          </label>
-        </div>
-      </div>
-
-      <!-- MACD Crossover params -->
-      <div id="params-macd_crossover" class="strat-params-panel">
-        <div class="setting-group">
-          <label class="setting-label" title="EMA nhanh (mặc định 12)">Fast EMA</label>
-          <input id="s_macdFast" class="ctrl-input" type="number" value="12" min="3" max="50" style="width:64px" />
-        </div>
-        <div class="setting-group">
-          <label class="setting-label" title="EMA chậm (mặc định 26)">Slow EMA</label>
-          <input id="s_macdSlow" class="ctrl-input" type="number" value="26" min="10" max="200" style="width:64px" />
-        </div>
-        <div class="setting-group">
-          <label class="setting-label" title="Signal line EMA (mặc định 9)">Signal</label>
-          <input id="s_macdSig" class="ctrl-input" type="number" value="9" min="3" max="30" style="width:64px" />
-        </div>
-      </div>
-
-      <!-- Supertrend params -->
-      <div id="params-supertrend" class="strat-params-panel">
-        <div class="setting-group">
-          <label class="setting-label" title="ATR period để tính band width">ATR Period</label>
-          <input id="s_stAtrPeriod" class="ctrl-input" type="number" value="10" min="5" max="50" style="width:64px" />
-        </div>
-        <div class="setting-group">
-          <label class="setting-label" title="Nhân với ATR để xác định độ rộng band. Nhỏ hơn = nhạy hơn">Multiplier</label>
-          <input id="s_stMultiplier" class="ctrl-input" type="number" value="3" min="1" max="10" step="0.5" style="width:64px" />
-        </div>
-      </div>
-
-      <!-- Donchian Breakout params -->
-      <div id="params-donchian_breakout" class="strat-params-panel">
-        <div class="setting-group">
-          <label class="setting-label" title="Số nến để xác định N-bar high/low (Donchian Channel width)">Lookback</label>
-          <input id="s_dcLookback" class="ctrl-input" type="number" value="20" min="5" max="100" style="width:64px" />
-        </div>
-        <div class="setting-group">
-          <label class="setting-label" title="Close phải vượt level tối thiểu X% để xác nhận breakout thật">Close % min</label>
-          <input id="s_dcClosePct" class="ctrl-input" type="number" value="0.1" min="0.01" max="2" step="0.05" style="width:72px" />
-        </div>
-      </div>
-
-      <!-- Turtle Trading params -->
-      <div id="params-turtle_trading" class="strat-params-panel">
-        <!-- System preset buttons -->
-        <div class="setting-group">
-          <label class="setting-label" title="System 1: Entry 20, Exit 10 (ngắn hạn, dùng Win Filter). System 2: Entry 55, Exit 20 (dài hạn, không filter)">System</label>
-          <div class="tt-preset-group">
-            <button id="ttBtnS1" class="tt-preset-btn tt-active"
-              onclick="selectTurtleSystem('S1')" title="S1: 20/10 + Win Filter">🐢 S1</button>
-            <button id="ttBtnS2" class="tt-preset-btn"
-              onclick="selectTurtleSystem('S2')" title="S2: 55/20, no filter">🐢🐢 S2</button>
-            <button id="ttBtnCustom" class="tt-preset-btn"
-              onclick="selectTurtleSystem('custom')" title="Tùy chỉnh period">⚙️ Custom</button>
-          </div>
-          <input id="s_ttSystem" type="hidden" value="S1" />
-        </div>
-        <!-- Custom period inputs (hidden by default) -->
-        <div id="tt-custom-params" style="display:none; gap:10px; flex-wrap:wrap" class="setting-group-row">
-          <div class="setting-group">
-            <label class="setting-label" title="Số nến để xác định entry channel high/low">Entry N</label>
-            <input id="s_ttEntry" class="ctrl-input" type="number" value="20" min="5" max="200" style="width:60px" />
-          </div>
-          <div class="setting-group">
-            <label class="setting-label" title="Số nến để xác định exit channel (thường = Entry/2)">Exit N</label>
-            <input id="s_ttExit" class="ctrl-input" type="number" value="10" min="2" max="100" style="width:60px" />
+    <!-- Main Area -->
+    <div class="main-container">
+      <header class="app-header">
+        <div class="header-left">
+          <button class="mobile-menu-btn" id="mobileMenuBtn" onclick="toggleSidebar()">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+          </button>
+          
+          <div class="header-sub-tabs-container">
+            <div class="header-primary-tabs">
+              <a href="#" class="primary-tab active">Trading Simulator</a>
+              <a href="#" class="primary-tab">X-Ray Analytics</a>
+              <a href="#" class="primary-tab">Scorer Optimizer</a>
+              <a href="#" class="primary-tab">AI Predictor</a>
+              <a href="#" class="primary-tab">Live Trading<span class="pulsing-dot"></span></a>
+              <a href="#" class="primary-tab">Advanced Builder</a>
+            </div>
+            <div class="header-secondary-tabs">
+              <a href="#" class="secondary-tab">Paper Trading</a>
+              <a href="#" class="secondary-tab active">Backtest</a>
+            </div>
           </div>
         </div>
-        <div class="setting-group">
-          <label class="setting-label" title="ATR period để tính N (votatility unit)">ATR (N)</label>
-          <input id="s_ttAtrPeriod" class="ctrl-input" type="number" value="20" min="5" max="50" style="width:60px" />
+        
+        <div class="header-right">
+          <button class="notification-bell" title="Thông báo">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            <span class="bell-badge"></span>
+          </button>
+          <div class="user-avatar" title="Hieu Nguyen">HN</div>
         </div>
-        <div class="setting-group">
-          <label class="setting-label" title="Stop loss = X × ATR. Nguyên bản = 2N">SL ×N</label>
-          <input id="s_ttNStop" class="ctrl-input" type="number" value="2" min="0.5" max="5" step="0.5" style="width:60px" />
-        </div>
-        <div class="setting-group">
-          <label class="setting-label" title="Win Filter (System 1): bỏ qua tín hiệu nếu lệnh trước WIN. Giảm whipsaw, tăng hit rate.">Win Filter</label>
-          <label class="fb-toggle-wrap">
-            <input id="s_ttWinFilter" type="checkbox" checked onchange="void 0" />
-            <span class="fb-toggle-track"></span>
-          </label>
-        </div>
-      </div>
-    </div>
+      </header>
 
-    <!-- Portfolio coins -->
-    <div id="portfolioCoinsWrap" class="portfolio-coins-bar" style="display:none">
-      <div class="portfolio-controls">
-        <div class="portfolio-info">
-          <span class="portfolio-label">📊 Top 100 Coin (Vốn hóa):</span>
-          <span class="portfolio-selected-count" id="selectedCount">Đã chọn: 3</span>
-        </div>
-        <div class="portfolio-actions">
-          <button type="button" class="portfolio-action-btn" onclick="selectTopCoins(10)">Top 10</button>
-          <button type="button" class="portfolio-action-btn" onclick="selectTopCoins(50)">Top 50</button>
-          <button type="button" class="portfolio-action-btn" onclick="selectTopCoins(100)">Top 100</button>
-          <button type="button" class="portfolio-action-btn warn" onclick="deselectAllCoins()">Bỏ chọn</button>
-        </div>
-        <div class="portfolio-search-wrap">
-          <input type="text" id="portfolioSearch" placeholder="Tìm coin (vd: SOL, ADA)..." onkeyup="filterPortfolioChips()">
-        </div>
-      </div>
-      <div class="portfolio-chips-scroll">
-        <div class="portfolio-chips" id="portfolioChips">
-          <div class="loading-chips">⌛ Đang tải danh sách Top 100 coin...</div>
-        </div>
-      </div>
-    </div>
+      <div class="workspace-split">
+        <!-- ═══════════════════════════════════
+             LEFT PANEL — Sticky Controls
+             ═══════════════════════════════════ -->
+        <div class="ws-left-panel" id="wsLeftPanel">
+          <!-- Strategy Tab Bar -->
+          <div class="strategy-tab-bar" id="stratTabBar">
+            <!-- Primary strategy picker -->
+            <div class="strat-mobile-select-wrap strategy-primary-picker">
+              <span class="strat-mobile-select-label">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent-green)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 3 3 3-3 3"/><path d="M21 21H3V3"/><path d="m7 18 5-7 4 3 5-8"/></svg>
+                Chiến lược:
+              </span>
+              <select class="ctrl-select strat-mobile-select" id="stratMobileSelect" onchange="switchStrategy(this.value, document.querySelector('.strat-tab[data-strategy-id=\'' + this.value + '\']'))">
+                <!-- Will be populated dynamically via JavaScript -->
+              </select>
+            </div>
 
-    <!-- Progress bar -->
-    <div class="bt-progress-wrap" id="progressWrap" style="display:none">
-      <div class="bt-progress-track">
-        <div class="bt-progress-bar" id="progressBar" style="width:0%"></div>
-      </div>
-      <span class="bt-progress-label" id="progressLabel">0%</span>
-    </div>
-  </div>
+            <details class="strategy-browser">
+              <summary>
+                <span>Duyệt theo nhóm</span>
+                <span class="strategy-browser-action">danh sách</span>
+              </summary>
+              <div class="strat-tabs-desktop" id="stratTabsDesktop">
+                <!-- Will be populated dynamically via JavaScript -->
+                <div class="strat-tab-desc" id="stratTabDesc"></div>
+              </div>
+            </details>
+          </div>
 
-  <!-- Stats Bar -->
-  <div class="bt-stats-bar" id="statsBar" style="display:none">
-    <!-- Row 1: Core metrics -->
-    <div class="bt-stats-inner">
-      <div class="stat-card">
-        <div class="stat-label">Tổng Lệnh</div>
-        <div class="stat-value" id="statTotal">—</div>
-      </div>
-      <div class="stat-card highlight-green">
-        <div class="stat-label">Win Rate</div>
-        <div class="stat-value" id="statWinRate">—</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Profit Factor</div>
-        <div class="stat-value" id="statPF">—</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Tổng P&L</div>
-        <div class="stat-value" id="statPnL">—</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Vốn Cuối</div>
-        <div class="stat-value" id="statFinal">—</div>
-      </div>
-      <div class="stat-card highlight-red">
-        <div class="stat-label">Max Drawdown</div>
-        <div class="stat-value" id="statDD">—</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Avg Win</div>
-        <div class="stat-value green" id="statAvgWin">—</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Avg Loss</div>
-        <div class="stat-value red" id="statAvgLoss">—</div>
-      </div>
-    </div>
-    <!-- Row 2: Extended metrics -->
-    <div class="bt-stats-inner bt-stats-ext">
-      <div class="stat-card-sm highlight-green" id="statCAGRCard">
-        <div class="stat-label-sm">CAGR / Năm</div>
-        <div class="stat-val-sm" id="statCAGR">—</div>
-      </div>
-      <div class="stat-card-sm">
-        <div class="stat-label-sm">Sharpe Ratio</div>
-        <div class="stat-val-sm" id="statSharpe">—</div>
-      </div>
-      <div class="stat-card-sm">
-        <div class="stat-label-sm">Sortino</div>
-        <div class="stat-val-sm" id="statSortino">—</div>
-      </div>
-      <div class="stat-card-sm">
-        <div class="stat-label-sm">Recovery Factor</div>
-        <div class="stat-val-sm" id="statRecovery">—</div>
-      </div>
-      <div class="stat-card-sm">
-        <div class="stat-label-sm">Expectancy/lệnh</div>
-        <div class="stat-val-sm" id="statExpectancy">—</div>
-      </div>
-      <div class="stat-card-sm">
-        <div class="stat-label-sm">Avg Hold</div>
-        <div class="stat-val-sm" id="statAvgHold">—</div>
-      </div>
-      <div class="stat-card-sm">
-        <div class="stat-label-sm">Max Thua liên tiếp</div>
-        <div class="stat-val-sm" id="statMaxLoss" style="color:var(--red)">—</div>
-      </div>
-      <div class="stat-card-sm">
-        <div class="stat-label-sm">Max Thắng liên tiếp</div>
-        <div class="stat-val-sm" id="statMaxWin" style="color:var(--green)">—</div>
-      </div>
-    </div>
-    </div>
-    <!-- Fee disclaimer -->
-    <div id="feeDisclaimer" style="display:none;padding:6px 24px;font-size:11px;color:#f5a623;font-family:var(--font-mono);background:rgba(245,166,35,0.08);border-top:1px solid rgba(245,166,35,0.15)"></div>
-    <!-- ATR Context -->
-    <div id="atrContext" style="display:none;padding:6px 24px;font-size:11px;color:var(--text-dim);font-family:var(--font-mono);background:rgba(100,180,255,0.05);border-top:1px solid rgba(100,180,255,0.1)"></div>
-    <div class="bt-candle-info"><span id="btCandleCount"></span></div>
-  </div>
+          <!-- Scrollable area inside left panel -->
+          <div class="ws-left-scroll">
+            <!-- Filters settings bar -->
+            <div class="dashboard-filters-card" id="paramsFiltersCard">
+              <div class="filters-card-header">
+                <div class="filters-card-title">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                  Cấu hình thử nghiệm
+                </div>
+                
+                <div class="mode-toggle">
+                  <button id="modeSingle" class="mode-btn active" onclick="toggleMode('single')">Đơn Symbol</button>
+                  <button id="modePortfolio" class="mode-btn" onclick="toggleMode('portfolio')">Danh mục</button>
+                </div>
+              </div>
+              
+              <div class="config-accordion">
+                <details class="config-group" open>
+                  <summary>Market</summary>
+                  <div class="filters-grid">
+                    <div class="filter-input-wrap" id="singleSymbolWrap">
+                      <label class="filter-label">Symbol</label>
+                      <div class="symbol-search-wrap" id="symbolSearchWrap">
+                        <input id="btSymbol" class="ctrl-input symbol-input" type="text"
+                          placeholder="BTCUSDT" autocomplete="off" spellcheck="false" value="BTCUSDT"
+                          oninput="onATRParamChange()" />
+                        <div class="symbol-dropdown" id="symbolDropdown"></div>
+                      </div>
+                    </div>
 
-  <!-- Run Badge Bar (hiện khi có ≥ 2 chiến lược đã chạy) -->
-  <div class="run-badge-bar" id="runBadgeBar" style="display:none"></div>
+                    <div class="filter-input-wrap">
+                      <label class="filter-label">Timeframe</label>
+                      <select id="btInterval" class="ctrl-select" onchange="onATRParamChange()">
+                        <option value="15m">15 phút</option>
+                        <option value="1h">1 giờ</option>
+                        <option value="4h" selected>4 giờ</option>
+                        <option value="1d">1 ngày</option>
+                      </select>
+                    </div>
 
-  <!-- Main Content -->
-  <main class="bt-main" id="btMain" style="display:none">
+                    <div class="filter-input-wrap">
+                      <label class="filter-label">Từ ngày</label>
+                      <input type="date" id="btStartDate" class="ctrl-input date-input" />
+                    </div>
 
-    <!-- Equity Curve -->
-    <div class="bt-section">
-      <div class="bt-section-header">
-        <h2 class="bt-section-title">📈 Đường Vốn (Equity Curve)</h2>
-        <div class="equity-legend">
-          <span class="eq-leg win">▲ WIN</span>
-          <span class="eq-leg loss">▼ LOSS</span>
-          <span class="eq-leg" style="color:#00f5a0;font-size:10px" id="legEMA">— 📈 EMA</span>
-          <span class="eq-leg" style="color:#a855f7;font-size:10px;display:none" id="legRSI">— 🔄 RSI</span>
-          <span class="eq-leg" style="color:#f97316;font-size:10px;display:none" id="legBB">— 📊 BB</span>
-          <span class="eq-leg" style="color:#ec4899;font-size:10px;display:none" id="legFB">— 🩤 Fakeout</span>
-          <span class="eq-leg" style="color:#06b6d4;font-size:10px;display:none" id="legMACD">— 📉 MACD</span>
-          <span class="eq-leg" style="color:#22c55e;font-size:10px;display:none" id="legST">— 🔱 ST</span>
-          <span class="eq-leg" style="color:#f59e0b;font-size:10px;display:none" id="legDC">— 📦 DC</span>
-          <span class="eq-leg" style="color:#6366f1;font-size:10px;display:none" id="legTT">— 🐢 Turtle</span>
-          <span class="eq-leg" style="color:orange;font-size:10px">- - B&amp;H</span>
-        </div>
-      </div>
-      <div class="equity-chart-wrap">
-        <canvas id="equityCanvas"></canvas>
-      </div>
-    </div>
+                    <div class="filter-input-wrap">
+                      <label class="filter-label">Đến ngày</label>
+                      <input type="date" id="btEndDate" class="ctrl-input date-input" />
+                    </div>
+                  </div>
+                </details>
 
-    <!-- Monthly Heatmap -->
-    <div class="bt-section">
-      <div class="bt-section-header">
-        <h2 class="bt-section-title">📅 Hiệu Suất Theo Tháng</h2>
-        <span style="font-size:11px;color:var(--text-muted);font-family:var(--font-mono)">màu xanh = lãi · đỏ = lỗ · đậm hơn = lớn hơn</span>
-      </div>
-      <div id="monthlyHeatmap" style="overflow-x:auto;padding:8px 16px 16px"></div>
-    </div>
+                <details class="config-group" open>
+                  <summary>Capital &amp; Risk</summary>
+                  <div class="filters-grid">
+                    <div class="filter-input-wrap">
+                      <label class="filter-label">Vốn ban đầu</label>
+                      <select id="btCapital" class="ctrl-select">
+                        <option value="1000">$1,000</option>
+                        <option value="5000">$5,000</option>
+                        <option value="10000" selected>$10,000</option>
+                        <option value="100000">$100,000</option>
+                      </select>
+                    </div>
 
-    <!-- Trade Distribution -->
-    <div class="bt-section">
-      <div class="bt-section-header">
-        <h2 class="bt-section-title">🎯 Phân Bổ Kết Quả</h2>
-      </div>
-      <div class="dist-grid" id="distGrid"></div>
-    </div>
+                    <div class="filter-input-wrap">
+                      <label class="filter-label">Kiểu phân bổ</label>
+                      <select id="btSizeType" class="ctrl-select" onchange="onSizeTypeChange()">
+                        <option value="risk" selected>Rủi ro % SL</option>
+                        <option value="percent">% Vốn/lệnh</option>
+                        <option value="fixed">Số tiền cố định</option>
+                      </select>
+                    </div>
 
-    <!-- Pattern Performance -->
-    <div class="bt-section">
-      <div class="bt-section-header">
-        <h2 class="bt-section-title">🕯️ Hiệu Suất Theo Pattern</h2>
-        <span style="font-size:11px;color:var(--text-muted);font-family:var(--font-mono)">22 mô hình · Hover để xem mô tả · 🔥 = hiệu suất cao</span>
-      </div>
-      <div class="trade-table-wrap">
-        <table class="trade-table">
-          <thead><tr>
-            <th>Pattern</th><th>Tổng</th><th>Thắng</th><th>Thua</th>
-            <th>Win Rate</th><th>Avg PnL</th><th>Tổng PnL</th>
-          </tr></thead>
-          <tbody id="patternTableBody"></tbody>
-        </table>
-      </div>
-      <div id="patternTableNote" style="display:none;padding:8px 16px;font-size:10px;color:var(--text-muted);font-family:var(--font-mono)">
-        💡 Hover chuột vào từng dòng để xem mô tả chi tiết pattern. ↑ = tín hiệu tăng · ↓ = tín hiệu giảm · 🔥 WR×AvgPnL cao
-      </div>
-    </div>
+                    <div class="filter-input-wrap">
+                      <label class="filter-label" id="lblSizeValue">Rủi ro %</label>
+                      <input id="btSizeValue" class="ctrl-input" type="number" value="2" min="0.01" step="any" />
+                    </div>
 
-    <!-- Symbol Breakdown (portfolio) -->
-    <div class="bt-section" id="symbolBreakdownSection" style="display:none">
-      <div class="bt-section-header">
-        <h2 class="bt-section-title">📊 Chi Tiết Theo Symbol</h2>
-      </div>
-      <div class="trade-table-wrap">
-        <table class="trade-table">
-          <thead><tr>
-            <th>Symbol</th><th>Lệnh</th><th>Win Rate</th><th>PF</th>
-            <th>Tổng PnL</th><th>Drawdown</th><th>Avg Hold</th><th>Sharpe</th>
-          </tr></thead>
-          <tbody id="symbolTableBody"></tbody>
-        </table>
-      </div>
-    </div>
+                    <div class="filter-input-wrap">
+                      <label class="filter-label" title="Phí giao dịch round-trip (vào + thoát). Binance Spot mặc định 0.1%">Phí GD %</label>
+                      <input id="btFeeRate" class="ctrl-input" type="number" value="0.1" min="0" max="1" step="0.01" />
+                    </div>
+                  </div>
+                </details>
 
-    <!-- Strategy Comparison (hiện khi có ≥ 2 runs) -->
-    <div class="bt-section" id="stratCompareSection" style="display:none"></div>
+                <details class="config-group">
+                  <summary>Exit Rules</summary>
+                  <div class="filters-grid">
+                    <div class="filter-input-wrap">
+                      <label class="filter-label">Loại Stop Loss</label>
+                      <div class="mode-toggle">
+                        <button id="slModeFixed" class="mode-btn active" onclick="toggleSLMode('fixed')">Fixed %</button>
+                        <button id="slModeATR" class="mode-btn" onclick="toggleSLMode('atr')">ATR×</button>
+                      </div>
+                    </div>
 
-    <!-- Buy & Hold Comparison -->
-    <div class="bt-section" id="bhCompareSection" style="display:none"></div>
+                    <div class="filter-input-wrap" id="slFixedWrap">
+                      <label class="filter-label">SL %</label>
+                      <select id="btSL" class="ctrl-select">
+                        <option value="0.01">1.0%</option>
+                        <option value="0.015" selected>1.5%</option>
+                        <option value="0.02">2.0%</option>
+                        <option value="0.03">3.0%</option>
+                        <option value="0.05">5.0%</option>
+                      </select>
+                    </div>
 
-    <!-- Trade Table -->
-    <div class="bt-section">
-      <div class="bt-section-header">
-        <h2 class="bt-section-title">📋 Lịch Sử Giao Dịch</h2>
-        <div class="table-filter">
-          <button class="filter-btn active" onclick="filterTrades('all', this)">Tất cả</button>
-          <button class="filter-btn" onclick="filterTrades('win', this)">✅ Thắng</button>
-          <button class="filter-btn" onclick="filterTrades('loss', this)">❌ Thua</button>
-        </div>
-      </div>
-      <div class="trade-table-wrap">
-        <table class="trade-table" id="tradeTable">
-          <thead>
-            <tr>
-              <th>#</th>
-              <th class="col-symbol" style="display:none">Symbol</th>
-              <th>Thời Gian</th>
-              <th>Loại</th>
-              <th>Volume ($)</th>
-              <th>Pattern</th>
-              <th>Entry</th>
-              <th>SL</th>
-              <th>TP</th>
-              <th>Thoát Tại</th>
-              <th>SL Dist</th>
-              <th>Hold</th>
-              <th>KQ</th>
-              <th>PnL ($)</th>
-              <th>PnL (%)</th>
-            </tr>
-          </thead>
-          <tbody id="tradeTableBody"></tbody>
-        </table>
-      </div>
-    </div>
+                    <div class="filter-input-wrap" id="slATRWrap" style="display:none">
+                      <label class="filter-label">ATR Period</label>
+                      <input id="atrPeriod" class="ctrl-input" type="number" value="14" min="5" max="50" oninput="onATRParamChange()" />
+                    </div>
 
-  </main>
+                    <div class="filter-input-wrap" id="slATRMultWrap" style="display:none">
+                      <label class="filter-label">ATR Mult ×</label>
+                      <input id="atrMult" class="ctrl-input" type="number" value="1.5" min="0.5" max="5" step="0.1" oninput="onATRParamChange()" />
+                    </div>
+
+                    <div class="filter-input-wrap">
+                      <label class="filter-label">R:R Ratio</label>
+                      <select id="btRR" class="ctrl-select">
+                        <option value="0.5">1 : 0.5</option>
+                        <option value="1">1 : 1</option>
+                        <option value="1.25">1 : 1.25</option>
+                        <option value="1.5">1 : 1.5</option>
+                        <option value="1.75">1 : 1.75</option>
+                        <option value="2" selected>1 : 2</option>
+                        <option value="2.25">1 : 2.25</option>
+                        <option value="2.5">1 : 2.5</option>
+                        <option value="2.75">1 : 2.75</option>
+                        <option value="3">1 : 3</option>
+                        <option value="3.5">1 : 3.5</option>
+                        <option value="4">1 : 4</option>
+                        <option value="5">1 : 5</option>
+                      </select>
+                    </div>
+
+                    <div class="filter-input-wrap">
+                      <label class="filter-label" title="Dời stop loss theo hướng có lợi, dùng cùng khoảng cách với SL ban đầu.">Trailing Stop</label>
+                      <label class="fb-toggle" title="Bật để SL đi theo giá khi lệnh đang có lợi">
+                        <input type="checkbox" id="btTrailingStop" />
+                        <span class="fb-toggle-track"></span>
+                      </label>
+                    </div>
+
+                    <div class="filter-input-wrap">
+                      <label class="filter-label" title="Số nến tối đa giữ lệnh nếu không đạt SL/TP. Mặc định 80 nến.">Max Hold</label>
+                      <input id="btMaxHold" class="ctrl-input" type="number" value="80" min="10" max="500" step="10" />
+                    </div>
+                  </div>
+                </details>
+
+                <details class="config-group">
+                  <summary>Signal Filter</summary>
+                  <div class="filters-grid">
+                    <div class="filter-input-wrap">
+                      <label class="filter-label">Mô hình nến</label>
+                      <select id="btPattern" class="ctrl-select">
+                        <option value="all" selected>🕯️ Tất cả mô hình</option>
+                        <optgroup label="─── 1 nến (Tăng) ───">
+                          <option value="bullHammer">Hammer ↑</option>
+                          <option value="invertedHammer">Inv. Hammer ↑</option>
+                          <option value="pinBarBull">Pin Bar ↑</option>
+                          <option value="dragonflyDoji">Dragonfly Doji ↑</option>
+                          <option value="marubozuBull">Marubozu ↑</option>
+                        </optgroup>
+                        <optgroup label="─── 1 nến (Giảm) ───">
+                          <option value="hangingMan">Hanging Man ↓</option>
+                          <option value="shootingStar">Shooting Star ↓</option>
+                          <option value="gravestoneDoji">Gravestone Doji ↓</option>
+                          <option value="marubozuBear">Marubozu ↓</option>
+                        </optgroup>
+                        <optgroup label="─── 1 nến (Trung tính) ───">
+                          <option value="dojiStar">Doji —</option>
+                          <option value="spintop">Spinning Top —</option>
+                        </optgroup>
+                        <optgroup label="─── 2 nến (Tăng) ───">
+                          <option value="bullEngulfing">Engulfing ↑</option>
+                          <option value="bullHarami">Harami ↑</option>
+                          <option value="tweezersBot">Tweezer Bottom ↑</option>
+                          <option value="piercingLine">Piercing Line ↑</option>
+                        </optgroup>
+                        <optgroup label="─── 2 nến (Giảm) ───">
+                          <option value="bearEngulfing">Engulfing ↓</option>
+                          <option value="bearHarami">Harami ↓</option>
+                          <option value="tweezersTop">Tweezer Top ↓</option>
+                          <option value="darkCloud">Dark Cloud ↓</option>
+                          <option value="onNeck">On-Neck ↓</option>
+                        </optgroup>
+                        <optgroup label="─── 3 nến ───">
+                          <option value="morningStar">Morning Star ↑</option>
+                          <option value="eveningStar">Evening Star ↓</option>
+                          <option value="threeWhite">3 White Soldiers ↑</option>
+                          <option value="threeBlack">3 Black Crows ↓</option>
+                        </optgroup>
+                      </select>
+                    </div>
+                  </div>
+                </details>
+              </div>
+            </div>
+
+            <!-- Strategy-specific param panels -->
+            <div class="strategy-params-bar" id="stratParamsBar">
+              <!-- EMA Crossover params -->
+              <div id="params-ema_crossover" class="strat-params-panel active">
+                <div class="setting-group">
+                  <label class="setting-label">Fast EMA</label>
+                  <input id="s_fastEMA" class="ctrl-input" type="number" value="20" min="5" max="50" />
+                </div>
+                <div class="setting-group">
+                  <label class="setting-label">Slow EMA</label>
+                  <input id="s_slowEMA" class="ctrl-input" type="number" value="50" min="10" max="200" />
+                </div>
+              </div>
+
+              <!-- RSI Reversal params -->
+              <div id="params-rsi_reversal" class="strat-params-panel">
+                <div class="setting-group">
+                  <label class="setting-label">RSI Period</label>
+                  <input id="s_rsiPeriod" class="ctrl-input" type="number" value="14" min="2" max="50" />
+                </div>
+                <div class="setting-group">
+                  <label class="setting-label">Oversold</label>
+                  <input id="s_oversold" class="ctrl-input" type="number" value="30" min="10" max="45" />
+                </div>
+                <div class="setting-group">
+                  <label class="setting-label">Overbought</label>
+                  <input id="s_overbought" class="ctrl-input" type="number" value="70" min="55" max="90" />
+                </div>
+              </div>
+
+              <!-- Bollinger Bands params -->
+              <div id="params-bb_bounce" class="strat-params-panel">
+                <div class="setting-group">
+                  <label class="setting-label">BB Period</label>
+                  <input id="s_bbPeriod" class="ctrl-input" type="number" value="20" min="5" max="50" />
+                </div>
+                <div class="setting-group">
+                  <label class="setting-label">Std Dev</label>
+                  <input id="s_bbStdDev" class="ctrl-input" type="number" value="2" min="1" max="4" step="0.5" />
+                </div>
+              </div>
+
+              <!-- False Breakout params -->
+              <div id="params-false_breakout" class="strat-params-panel">
+                <div class="setting-group">
+                  <label class="setting-label" title="Số nến nhìn về để xác định swing high/low.">Lookback</label>
+                  <input id="s_fbLookback" class="ctrl-input" type="number" value="20" min="5" max="100" />
+                </div>
+                <div class="setting-group">
+                  <label class="setting-label" title="Giá phải phá vỡ tối thiểu X% qua level mới tính là breakout">Break % min</label>
+                  <input id="s_fbBreakoutPct" class="ctrl-input" type="number" value="0.2" min="0.05" max="2" step="0.05" />
+                </div>
+                <div class="setting-group">
+                  <label class="setting-label" title="Yêu cầu phải có mô hình nến đảo chiều tại điểm fakeout">Yêu cầu nến</label>
+                  <label class="fb-toggle" title="Tắt = bất kỳ fakeout nào · Bật = phải có mô hình nến xác nhận">
+                    <input type="checkbox" id="s_fbRequirePattern" />
+                    <span class="fb-toggle-track"></span>
+                  </label>
+                </div>
+              </div>
+
+              <!-- MACD Crossover params -->
+              <div id="params-macd_crossover" class="strat-params-panel">
+                <div class="setting-group">
+                  <label class="setting-label" title="EMA nhanh (mặc định 12)">Fast EMA</label>
+                  <input id="s_macdFast" class="ctrl-input" type="number" value="12" min="3" max="50" />
+                </div>
+                <div class="setting-group">
+                  <label class="setting-label" title="EMA chậm (mặc định 26)">Slow EMA</label>
+                  <input id="s_macdSlow" class="ctrl-input" type="number" value="26" min="10" max="200" />
+                </div>
+                <div class="setting-group">
+                  <label class="setting-label" title="Signal line EMA (mặc định 9)">Signal</label>
+                  <input id="s_macdSig" class="ctrl-input" type="number" value="9" min="3" max="30" />
+                </div>
+              </div>
+
+              <!-- Supertrend params -->
+              <div id="params-supertrend" class="strat-params-panel">
+                <div class="setting-group">
+                  <label class="setting-label" title="ATR period để tính band width">ATR Period</label>
+                  <input id="s_stAtrPeriod" class="ctrl-input" type="number" value="10" min="5" max="50" />
+                </div>
+                <div class="setting-group">
+                  <label class="setting-label" title="Nhân với ATR để xác định độ rộng band.">Multiplier</label>
+                  <input id="s_stMultiplier" class="ctrl-input" type="number" value="3" min="1" max="10" step="0.5" />
+                </div>
+              </div>
+
+              <!-- Donchian Breakout params -->
+              <div id="params-donchian_breakout" class="strat-params-panel">
+                <div class="setting-group">
+                  <label class="setting-label" title="Số nến để xác định N-bar high/low">Lookback</label>
+                  <input id="s_dcLookback" class="ctrl-input" type="number" value="20" min="5" max="100" />
+                </div>
+                <div class="setting-group">
+                  <label class="setting-label" title="Close phải vượt level tối thiểu X% để xác nhận breakout thật">Close % min</label>
+                  <input id="s_dcClosePct" class="ctrl-input" type="number" value="0.1" min="0.01" max="2" step="0.05" />
+                </div>
+              </div>
+
+              <!-- Turtle Trading params -->
+              <div id="params-turtle_trading" class="strat-params-panel">
+                <div class="setting-group">
+                  <label class="setting-label" title="System 1: Entry 20, Exit 10 (ngắn hạn, dùng Win Filter). System 2: Entry 55, Exit 20">System</label>
+                  <div class="tt-preset-group">
+                    <button id="ttBtnS1" class="tt-preset-btn tt-active"
+                      onclick="selectTurtleSystem('S1')" title="S1: 20/10 + Win Filter">🐢 S1</button>
+                    <button id="ttBtnS2" class="tt-preset-btn"
+                      onclick="selectTurtleSystem('S2')" title="S2: 55/20, no filter">🐢🐢 S2</button>
+                    <button id="ttBtnCustom" class="tt-preset-btn"
+                      onclick="selectTurtleSystem('custom')" title="Tùy chỉnh period">⚙️ Custom</button>
+                  </div>
+                  <input id="s_ttSystem" type="hidden" value="S1" />
+                </div>
+                <div id="tt-custom-params" style="display:none; gap:10px; flex-wrap:wrap" class="setting-group-row">
+                  <div class="setting-group">
+                    <label class="setting-label" title="Số nến để xác định entry channel high/low">Entry N</label>
+                    <input id="s_ttEntry" class="ctrl-input" type="number" value="20" min="5" max="200" />
+                  </div>
+                  <div class="setting-group">
+                    <label class="setting-label" title="Số nến để xác định exit channel">Exit N</label>
+                    <input id="s_ttExit" class="ctrl-input" type="number" value="10" min="2" max="100" />
+                  </div>
+                </div>
+                <div class="setting-group">
+                  <label class="setting-label" title="ATR period để tính N (votatility unit)">ATR (N)</label>
+                  <input id="s_ttAtrPeriod" class="ctrl-input" type="number" value="20" min="5" max="50" />
+                </div>
+                <div class="setting-group">
+                  <label class="setting-label" title="Stop loss = X × ATR. Nguyên bản = 2N">SL ×N</label>
+                  <input id="s_ttNStop" class="ctrl-input" type="number" value="2" min="0.5" max="5" step="0.5" />
+                </div>
+                <div class="setting-group">
+                  <label class="setting-label" title="Win Filter: bỏ qua tín hiệu nếu lệnh trước WIN. Giảm whipsaw, tăng hit rate.">Win Filter</label>
+                  <label class="fb-toggle-wrap">
+                    <input id="s_ttWinFilter" type="checkbox" checked onchange="void 0" />
+                    <span class="fb-toggle-track"></span>
+                  </label>
+                </div>
+              </div>
+
+              <!-- Combo Strategy params -->
+              <div id="params-combo_strategy" class="strat-params-panel">
+                <div class="setting-group" style="flex-direction: column; align-items: flex-start; gap: 8px; width: 100%;">
+                  <label class="setting-label" style="margin-bottom: 4px; font-weight: 600; color: var(--accent-green);">Chọn các chiến lược để kết hợp:</label>
+                  <div class="combo-strats-grid" id="comboStratsGrid">
+                    <!-- Will be populated dynamically via JavaScript -->
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Portfolio coins bar -->
+            <div id="portfolioCoinsWrap" class="portfolio-coins-bar" style="display:none">
+              <div class="portfolio-controls">
+                <div class="portfolio-info">
+                  <span class="portfolio-label">📊 Top 100 Coin (Vốn hóa):</span>
+                  <span class="portfolio-selected-count" id="selectedCount">Đã chọn: 3</span>
+                </div>
+                <div class="portfolio-actions">
+                  <button type="button" class="portfolio-action-btn" onclick="selectTopCoins(10)">Top 10</button>
+                  <button type="button" class="portfolio-action-btn" onclick="selectTopCoins(50)">Top 50</button>
+                  <button type="button" class="portfolio-action-btn" onclick="selectTopCoins(100)">Top 100</button>
+                  <button type="button" class="portfolio-action-btn warn" onclick="deselectAllCoins()">Bỏ chọn</button>
+                </div>
+                <div class="portfolio-search-wrap">
+                  <input type="text" id="portfolioSearch" placeholder="Tìm coin (vd: SOL, ADA)..." onkeyup="filterPortfolioChips()">
+                </div>
+              </div>
+              <div class="portfolio-chips-scroll">
+                <div class="portfolio-chips" id="portfolioChips">
+                  <div class="loading-chips">⌛ Đang tải danh sách Top 100 coin...</div>
+                </div>
+              </div>
+            </div>
+          </div><!-- /.ws-left-scroll -->
+
+          <!-- Sticky Run Button at bottom of left panel -->
+          <div class="ws-left-footer">
+            <div class="bt-progress-wrap" id="progressWrap" style="display:none;">
+              <div class="bt-progress-track">
+                <div class="bt-progress-bar" id="progressBar" style="width:0%"></div>
+              </div>
+              <span class="bt-progress-label" id="progressLabel">0%</span>
+            </div>
+            <div class="ws-run-row">
+              <div class="loading-dot" id="loadingDot"></div>
+              <button class="btn-apply-filters ws-run-btn" id="btnRun" onclick="runBacktest()">
+                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                <span id="btnRunText">Run Backtest</span>
+              </button>
+            </div>
+          </div>
+        </div><!-- /.ws-left-panel -->
+
+        <!-- ═══════════════════════════════════
+             RIGHT PANEL — Scrollable Results
+             ═══════════════════════════════════ -->
+        <div class="ws-right-panel" id="wsRightPanel">
+          <!-- Stats Bar -->
+          <div class="bt-stats-bar" id="statsBar" style="display:none">
+            <!-- Row 1: Core metrics -->
+            <div class="bt-stats-inner">
+              <div class="stat-card">
+                <div class="stat-label">Tổng Lệnh</div>
+                <div class="stat-value" id="statTotal">—</div>
+              </div>
+              <div class="stat-card highlight-green">
+                <div class="stat-label">Win Rate</div>
+                <div class="stat-value" id="statWinRate">—</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-label">Profit Factor</div>
+                <div class="stat-value" id="statPF">—</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-label">Tổng P&amp;L</div>
+                <div class="stat-value" id="statPnL">—</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-label">Lợi Nhuận %</div>
+                <div class="stat-value" id="statReturnPct">—</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-label">Vốn Cuối</div>
+                <div class="stat-value" id="statFinal">—</div>
+              </div>
+              <div class="stat-card highlight-red">
+                <div class="stat-label">Max Drawdown</div>
+                <div class="stat-value" id="statDD">—</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-label">Avg Win</div>
+                <div class="stat-value green" id="statAvgWin">—</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-label">Avg Loss</div>
+                <div class="stat-value red" id="statAvgLoss">—</div>
+              </div>
+            </div>
+            <!-- Row 2: Extended metrics -->
+            <div class="bt-stats-inner bt-stats-ext">
+              <div class="stat-card-sm highlight-green" id="statCAGRCard">
+                <div class="stat-label-sm">CAGR / Năm</div>
+                <div class="stat-val-sm" id="statCAGR">—</div>
+              </div>
+              <div class="stat-card-sm">
+                <div class="stat-label-sm">Sharpe Ratio</div>
+                <div class="stat-val-sm" id="statSharpe">—</div>
+              </div>
+              <div class="stat-card-sm">
+                <div class="stat-label-sm">Sortino</div>
+                <div class="stat-val-sm" id="statSortino">—</div>
+              </div>
+              <div class="stat-card-sm">
+                <div class="stat-label-sm">Recovery Factor</div>
+                <div class="stat-val-sm" id="statRecovery">—</div>
+              </div>
+              <div class="stat-card-sm">
+                <div class="stat-label-sm">Expectancy/lệnh</div>
+                <div class="stat-val-sm" id="statExpectancy">—</div>
+              </div>
+              <div class="stat-card-sm">
+                <div class="stat-label-sm">Avg Hold</div>
+                <div class="stat-val-sm" id="statAvgHold">—</div>
+              </div>
+              <div class="stat-card-sm">
+                <div class="stat-label-sm">Max Thua liên tiếp</div>
+                <div class="stat-val-sm" id="statMaxLoss" style="color:var(--red)">—</div>
+              </div>
+              <div class="stat-card-sm">
+                <div class="stat-label-sm">Max Thắng liên tiếp</div>
+                <div class="stat-val-sm" id="statMaxWin" style="color:var(--green)">—</div>
+              </div>
+            </div>
+
+            <!-- Banners & Disclaimers -->
+            <div class="alert-banner" id="feeDisclaimer" style="display:none;"></div>
+            <div class="alert-banner" id="atrContext" style="display:none;"></div>
+            <div class="bt-candle-info"><span id="btCandleCount"></span></div>
+          </div>
+
+          <!-- Run Badge Bar -->
+          <div class="run-badge-bar" id="runBadgeBar" style="display:none"></div>
+
+          <!-- Result Navigation -->
+          <nav class="result-tabs" id="resultTabs" style="display:none" aria-label="Backtest result views">
+            <button class="result-tab active" type="button" data-result-tab="overview" onclick="switchResultTab('overview', this)">Overview</button>
+            <button class="result-tab" type="button" data-result-tab="patterns" onclick="switchResultTab('patterns', this)">Patterns</button>
+            <button class="result-tab" type="button" data-result-tab="compare" onclick="switchResultTab('compare', this)">Compare</button>
+            <button class="result-tab" type="button" data-result-tab="trades" onclick="switchResultTab('trades', this)">Trades</button>
+          </nav>
+
+          <!-- Empty state -->
+          <div class="bt-empty" id="btEmpty">
+            <div class="bt-empty-icon">📊</div>
+            <div class="bt-empty-title">Chọn chiến lược &amp; nhấn Run</div>
+            <div class="bt-empty-desc">Cấu hình các tham số ở bên trái, sau đó nhấn <strong>Run Backtest</strong> để xem kết quả tại đây.</div>
+          </div>
+
+          <!-- Main Content (Charts and Tables) -->
+          <main class="bt-main" id="btMain" data-active-tab="overview" style="display:none">
+            <!-- Equity Curve -->
+            <div class="bt-section" data-result-panel="overview">
+              <div class="bt-section-header">
+                <h2 class="bt-section-title">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="section-icon"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+                  Đường Vốn (Equity Curve)
+                </h2>
+                <div class="equity-legend">
+                  <span class="eq-leg win">▲ WIN</span>
+                  <span class="eq-leg loss">▼ LOSS</span>
+                  <span class="eq-leg" style="color:#00f5a0;font-size:10px" id="legEMA">— 📈 EMA</span>
+                  <span class="eq-leg" style="color:#a855f7;font-size:10px;display:none" id="legRSI">— 🔄 RSI</span>
+                  <span class="eq-leg" style="color:#f97316;font-size:10px;display:none" id="legBB">— 📊 BB</span>
+                  <span class="eq-leg" style="color:#ec4899;font-size:10px;display:none" id="legFB">— 🩤 Fakeout</span>
+                  <span class="eq-leg" style="color:#06b6d4;font-size:10px;display:none" id="legMACD">— 📉 MACD</span>
+                  <span class="eq-leg" style="color:#22c55e;font-size:10px;display:none" id="legST">— 🔱 ST</span>
+                  <span class="eq-leg" style="color:#f59e0b;font-size:10px;display:none" id="legDC">— 📦 DC</span>
+                  <span class="eq-leg" style="color:#6366f1;font-size:10px;display:none" id="legTT">— 🐢 Turtle</span>
+                  <span class="eq-leg" style="color:#ec4899;font-size:10px;display:none" id="legCombo">— 🧩 Combo</span>
+                  <span class="eq-leg" style="color:orange;font-size:10px">- - B&H</span>
+                </div>
+              </div>
+              <div class="equity-chart-wrap">
+                <canvas id="equityCanvas"></canvas>
+              </div>
+            </div>
+
+            <!-- Monthly Heatmap -->
+            <div class="bt-section" data-result-panel="overview">
+              <div class="bt-section-header">
+                <h2 class="bt-section-title">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="section-icon"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                  Hiệu Suất Theo Tháng
+                </h2>
+                <span style="font-size:11px;color:var(--text-muted);font-family:var(--font-mono)">màu xanh = lãi · đỏ = lỗ · đậm hơn = lớn hơn</span>
+              </div>
+              <div id="monthlyHeatmap" style="overflow-x:auto;padding:8px 16px 16px"></div>
+            </div>
+
+            <!-- Trade Distribution -->
+            <div class="bt-section" data-result-panel="overview">
+              <div class="bt-section-header">
+                <h2 class="bt-section-title">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="section-icon"><circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/><path d="M2 12h20"/></svg>
+                  Phân Bổ Kết Quả
+                </h2>
+              </div>
+              <div class="dist-grid" id="distGrid"></div>
+            </div>
+
+            <!-- Pattern Performance -->
+            <div class="bt-section" data-result-panel="patterns">
+              <div class="bt-section-header">
+                <h2 class="bt-section-title">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="section-icon"><path d="M6 2v20M18 2v20M12 5v14M9 8h6v8H9z"/></svg>
+                  Hiệu Suất Theo Pattern
+                </h2>
+                <span style="font-size:11px;color:var(--text-muted);font-family:var(--font-mono)">22 mô hình · Hover để xem mô tả · 🔥 = hiệu suất cao</span>
+              </div>
+              <div class="trade-table-wrap">
+                <table class="trade-table">
+                  <thead><tr>
+                    <th>Pattern</th><th>Tổng</th><th>Thắng</th><th>Thua</th>
+                    <th>Win Rate</th><th>Avg PnL</th><th>Tổng PnL</th>
+                  </tr></thead>
+                  <tbody id="patternTableBody"></tbody>
+                </table>
+              </div>
+              <div id="patternTableNote" style="display:none;padding:8px 16px;font-size:10px;color:var(--text-muted);font-family:var(--font-mono)">
+                💡 Hover chuột vào từng dòng để xem mô tả chi tiết pattern. ↑ = tín hiệu tăng · ↓ = tín hiệu giảm · 🔥 WR×AvgPnL cao
+              </div>
+            </div>
+
+            <!-- Symbol Breakdown (portfolio) -->
+            <div class="bt-section" id="symbolBreakdownSection" data-result-panel="compare" style="display:none">
+              <div class="bt-section-header">
+                <h2 class="bt-section-title">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="section-icon"><path d="M3 3v18h18"/><rect x="7" y="10" width="4" height="7"/><rect x="13" y="5" width="4" height="12"/></svg>
+                  Chi Tiết Theo Symbol
+                </h2>
+              </div>
+              <div class="trade-table-wrap">
+                <table class="trade-table">
+                  <thead><tr>
+                    <th>Symbol</th><th>Lệnh</th><th>Win Rate</th><th>PF</th>
+                    <th>Tổng PnL</th><th>Drawdown</th><th>Avg Hold</th><th>Sharpe</th>
+                  </tr></thead>
+                  <tbody id="symbolTableBody"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Strategy Comparison -->
+            <div class="bt-section" id="stratCompareSection" data-result-panel="compare" style="display:none"></div>
+
+            <!-- Buy & Hold Comparison -->
+            <div class="bt-section" id="bhCompareSection" data-result-panel="compare" style="display:none"></div>
+
+            <!-- Trade History Table -->
+            <div class="bt-section" data-result-panel="trades">
+              <div class="bt-section-header">
+                <h2 class="bt-section-title">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="section-icon"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="m9 16 2 2 4-4"/></svg>
+                  Lịch Sử Giao Dịch
+                </h2>
+                <div class="table-filter">
+                  <button class="filter-btn active" onclick="filterTrades('all', this)">Tất cả</button>
+                  <button class="filter-btn" onclick="filterTrades('win', this)">✅ Thắng</button>
+                  <button class="filter-btn" onclick="filterTrades('loss', this)">❌ Thua</button>
+                </div>
+              </div>
+              <div class="trade-table-wrap">
+                <table class="trade-table" id="tradeTable">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th class="col-symbol" style="display:none">Symbol</th>
+                      <th>Thời Gian</th>
+                      <th>Loại</th>
+                      <th>Volume ($)</th>
+                      <th>Pattern</th>
+                      <th>Entry</th>
+                      <th>SL</th>
+                      <th>TP</th>
+                      <th>Thoát Tại</th>
+                      <th>SL Dist</th>
+                      <th>Hold</th>
+                      <th>KQ</th>
+                      <th>PnL ($)</th>
+                      <th>PnL (%)</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tradeTableBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </main>
+        </div><!-- /.ws-right-panel -->
+      </div><!-- /.workspace-split -->
+    </div><!-- /.main-container -->
+  </div><!-- /.app-layout -->
 
   <!-- Download Modal -->
   <div class="dl-overlay" id="dlOverlay">
@@ -648,47 +861,7 @@
     </div>
   </div>
 
-  <!-- Data Manager -->
-  <div class="dm-panel" id="dmPanel">
-    <div class="dm-header">
-      <div class="dm-title">💾 Kho Dữ Liệu Local</div>
-      <div class="dm-actions">
-        <span class="dm-total" id="cacheTotalSize"></span>
-        <button class="cache-btn danger" onclick="clearAllCacheConfirmed()">🗑 Xóa tất cả</button>
-      </div>
-    </div>
-    <div class="dm-body">
-      <div id="cacheList"></div>
-      <div id="cacheEmpty" class="cache-empty" style="display:none">
-        <span>Chưa có dữ liệu nào. Chạy Backtest để tải và lưu tự động.</span>
-      </div>
-    </div>
-  </div>
 
-  <!-- Empty state -->
-  <div class="bt-empty" id="btEmpty">
-    <div class="bt-empty-icon">📊</div>
-    <div class="bt-empty-title">Chào mừng đến với Strategy Lab</div>
-    <div class="bt-empty-desc">
-      <div style="display:flex;flex-direction:column;gap:10px;align-items:center;max-width:420px">
-        <div style="display:flex;gap:12px;align-items:center;background:rgba(255,255,255,0.04);border-radius:10px;padding:12px 16px;width:100%;text-align:left">
-          <span style="font-size:20px">1️⃣</span>
-          <span><strong>Chọn coin</strong> — gõ tên (BTC, ETH...) vào ô Symbol ở trên</span>
-        </div>
-        <div style="display:flex;gap:12px;align-items:center;background:rgba(255,255,255,0.04);border-radius:10px;padding:12px 16px;width:100%;text-align:left">
-          <span style="font-size:20px">2️⃣</span>
-          <span><strong>Chọn tham số</strong> — Timeframe, khoảng ngày, Stop Loss, R:R</span>
-        </div>
-        <div style="display:flex;gap:12px;align-items:center;background:rgba(255,255,255,0.04);border-radius:10px;padding:12px 16px;width:100%;text-align:left">
-          <span style="font-size:20px">3️⃣</span>
-          <span><strong>Nhấn ▶ Chạy Backtest</strong> — dữ liệu tự tải nếu chưa có, kết quả hiện ngay</span>
-        </div>
-        <div style="margin-top:4px;font-size:11px;color:var(--text-muted);font-family:var(--font-mono)">
-          💡 Đặt <strong>Phí GD = 0.1%</strong> để kết quả sát thực tế Binance Spot nhất
-        </div>
-      </div>
-    </div>
-  </div>
 
   <!-- Toast -->
   <div class="toast" id="toast"></div>

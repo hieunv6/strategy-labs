@@ -51,6 +51,10 @@ function getStrategyParams(strategyId) {
     extra.ttAtrPeriod = parseInt(document.getElementById('s_ttAtrPeriod')?.value  || 20);
     extra.ttNStop     = parseFloat(document.getElementById('s_ttNStop')?.value    || 2);
     extra.ttWinFilter = document.getElementById('s_ttWinFilter')?.checked ?? true;
+  } else if (strategyId === 'combo_strategy') {
+    const selected = [];
+    document.querySelectorAll('.combo-strat-checkbox:checked').forEach(cb => selected.push(cb.value));
+    extra.comboStrategies = selected;
   }
   return extra;
 }
@@ -127,13 +131,15 @@ const STRATEGY_REGISTRY = {
   ema_crossover: {
     id: 'ema_crossover',
     name: 'EMA 20/50',
+    tabName: 'EMA 20/50',
     icon: '📈',
+    svg: `<svg class="strat-tab-svg" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 3 3 3-3 3"/><path d="M21 21H3V3"/><path d="m7 18 5-7 4 3 5-8"/></svg>`,
     color: '#00f5a0',
     desc: 'EMA 20 cắt EMA 50 + Retest + Mô hình nến đảo chiều',
     defaultParams: { fastEMA: 20, slowEMA: 50 },
     run(candles, params) {
       const { slMode, slValue, atrPeriod, rrRatio, capital, sizeType, sizeValue,
-              pattern: filterPattern, feeRate, maxHoldBars,
+              pattern: filterPattern, feeRate, maxHoldBars, trailingStop,
               fastEMA = 20, slowEMA = 50 } = params;
       const ema20  = calcEMA(candles, fastEMA);
       const ema50  = calcEMA(candles, slowEMA);
@@ -148,7 +154,7 @@ const STRATEGY_REGISTRY = {
         if (!pattern) return;
         if (filterPattern && filterPattern !== 'all' && pattern !== filterPattern) return;
         const sigIdx  = Math.min(rt.index + 1, candles.length - 1);
-        const trade   = simulateTrade(candles, sigIdx, cx.type, slMode, slValue, atrArr, rrRatio, cap, sizeType, sizeValue, feeRate, maxHoldBars);
+        const trade   = simulateTrade(candles, sigIdx, cx.type, slMode, slValue, atrArr, rrRatio, cap, sizeType, sizeValue, feeRate, maxHoldBars, trailingStop);
         if (!trade) return;
         trade.pattern = pattern;
         trades.push(trade);
@@ -161,13 +167,15 @@ const STRATEGY_REGISTRY = {
   rsi_reversal: {
     id: 'rsi_reversal',
     name: 'RSI Reversal',
+    tabName: 'RSI Reversal',
     icon: '🔄',
+    svg: `<svg class="strat-tab-svg" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>`,
     color: '#a855f7',
     desc: 'RSI oversold (<30) bounce hoặc overbought (>70) rejection với xác nhận nến',
     defaultParams: { rsiPeriod: 14, oversold: 30, overbought: 70 },
     run(candles, params) {
       const { slMode, slValue, atrPeriod, rrRatio, capital, sizeType, sizeValue,
-              feeRate, maxHoldBars, pattern: filterPattern,
+              feeRate, maxHoldBars, trailingStop, pattern: filterPattern,
               rsiPeriod = 14, oversold = 30, overbought = 70 } = params;
       const rsi    = calcRSI(candles, rsiPeriod);
       const atrArr = slMode === 'atr' ? calcATR(candles, atrPeriod) : null;
@@ -179,7 +187,7 @@ const STRATEGY_REGISTRY = {
         if (!pattern) return;
         if (filterPattern && filterPattern !== 'all' && pattern !== filterPattern) return;
         const sigIdx = Math.min(sig.index + 1, candles.length - 1);
-        const trade  = simulateTrade(candles, sigIdx, sig.type, slMode, slValue, atrArr, rrRatio, cap, sizeType, sizeValue, feeRate, maxHoldBars);
+        const trade  = simulateTrade(candles, sigIdx, sig.type, slMode, slValue, atrArr, rrRatio, cap, sizeType, sizeValue, feeRate, maxHoldBars, trailingStop);
         if (!trade) return;
         trade.pattern = pattern;
         trade.rsiAtEntry = rsi[sig.index];
@@ -193,13 +201,15 @@ const STRATEGY_REGISTRY = {
   bb_bounce: {
     id: 'bb_bounce',
     name: 'Bollinger Bands',
+    tabName: 'Bollinger Bands',
     icon: '📊',
+    svg: `<svg class="strat-tab-svg" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h18M3 6h18M3 18h18" stroke-dasharray="2 2"/><path d="M4 14l4-4 4 4 4-4 4 4"/></svg>`,
     color: '#f97316',
     desc: 'Giá bounce từ BB lower/upper trở về trong band với xác nhận nến',
     defaultParams: { bbPeriod: 20, bbStdDev: 2 },
     run(candles, params) {
       const { slMode, slValue, atrPeriod, rrRatio, capital, sizeType, sizeValue,
-              feeRate, maxHoldBars, pattern: filterPattern,
+              feeRate, maxHoldBars, trailingStop, pattern: filterPattern,
               bbPeriod = 20, bbStdDev = 2 } = params;
       const bb     = calcBB(candles, bbPeriod, bbStdDev);
       const atrArr = slMode === 'atr' ? calcATR(candles, atrPeriod) : null;
@@ -210,7 +220,7 @@ const STRATEGY_REGISTRY = {
         const pattern = detectPattern(candles, sig.index, sig.type) || (sig.type === 'bull' ? 'bullHammer' : 'shootingStar');
         if (filterPattern && filterPattern !== 'all' && pattern !== filterPattern) return;
         const sigIdx = Math.min(sig.index + 1, candles.length - 1);
-        const trade  = simulateTrade(candles, sigIdx, sig.type, slMode, slValue, atrArr, rrRatio, cap, sizeType, sizeValue, feeRate, maxHoldBars);
+        const trade  = simulateTrade(candles, sigIdx, sig.type, slMode, slValue, atrArr, rrRatio, cap, sizeType, sizeValue, feeRate, maxHoldBars, trailingStop);
         if (!trade) return;
         trade.pattern = pattern;
         trade.bbRef   = sig.bandRef;
@@ -224,13 +234,15 @@ const STRATEGY_REGISTRY = {
   false_breakout: {
     id: 'false_breakout',
     name: 'False Breakout',
+    tabName: 'False Breakout',
     icon: '🪤',
+    svg: `<svg class="strat-tab-svg" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 18h20M2 6h20" stroke-opacity="0.3"/><path d="m4 12 3 3 4-9 4 12 2-6h3"/></svg>`,
     color: '#ec4899',
     desc: 'Giá phá vỡ N-bar high/low giả rồi đóng cửa trở lại trong range → fade the fakeout',
     defaultParams: { fbLookback: 20, fbBreakoutPct: 0.2, fbRequirePattern: false },
     run(candles, params) {
       const { slMode, slValue, atrPeriod, rrRatio, capital, sizeType, sizeValue,
-              feeRate, maxHoldBars, pattern: filterPattern,
+              feeRate, maxHoldBars, trailingStop, pattern: filterPattern,
               fbLookback = 20, fbBreakoutPct = 0.2, fbRequirePattern = false } = params;
 
       const swings = calcSwingLevels(candles, fbLookback);
@@ -248,7 +260,7 @@ const STRATEGY_REGISTRY = {
         if (filterPattern && filterPattern !== 'all' && pattern !== filterPattern) return;
 
         const sigIdx = Math.min(sig.index + 1, candles.length - 1);
-        const trade  = simulateTrade(candles, sigIdx, sig.type, slMode, slValue, atrArr, rrRatio, cap, sizeType, sizeValue, feeRate, maxHoldBars);
+        const trade  = simulateTrade(candles, sigIdx, sig.type, slMode, slValue, atrArr, rrRatio, cap, sizeType, sizeValue, feeRate, maxHoldBars, trailingStop);
         if (!trade) return;
         trade.pattern   = pattern;
         trade.fakeDir   = sig.fakeDir;
@@ -266,13 +278,16 @@ const STRATEGY_REGISTRY = {
   macd_crossover: {
     id: 'macd_crossover',
     name: 'MACD Crossover',
+    tabName: 'MACD',
+    groupDivider: 'Trend Following',
     icon: '📉',
+    svg: `<svg class="strat-tab-svg" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12c4-8 6 8 9 0s5-4 9 0"/><path d="M3 12c4 4 6-4 9 0s5 8 9 0" stroke-opacity="0.5"/></svg>`,
     color: '#06b6d4',
     desc: 'MACD line cắt Signal line → xác nhận xu hướng bằng histogram',
     defaultParams: { macdFast: 12, macdSlow: 26, macdSig: 9 },
     run(candles, params) {
       const { slMode, slValue, atrPeriod, rrRatio, capital, sizeType, sizeValue,
-              feeRate, maxHoldBars, pattern: filterPattern,
+              feeRate, maxHoldBars, trailingStop, pattern: filterPattern,
               macdFast = 12, macdSlow = 26, macdSig = 9 } = params;
       const macdData = calcMACD(candles, macdFast, macdSlow, macdSig);
       const atrArr   = slMode === 'atr' ? calcATR(candles, atrPeriod) : null;
@@ -283,7 +298,7 @@ const STRATEGY_REGISTRY = {
           || (sig.type === 'bull' ? 'bullHammer' : 'shootingStar');
         if (filterPattern && filterPattern !== 'all' && pattern !== filterPattern) return;
         const sigIdx = Math.min(sig.index + 1, candles.length - 1);
-        const trade  = simulateTrade(candles, sigIdx, sig.type, slMode, slValue, atrArr, rrRatio, cap, sizeType, sizeValue, feeRate, maxHoldBars);
+        const trade  = simulateTrade(candles, sigIdx, sig.type, slMode, slValue, atrArr, rrRatio, cap, sizeType, sizeValue, feeRate, maxHoldBars, trailingStop);
         if (!trade) return;
         trade.pattern  = pattern;
         trade.macdVal  = sig.macdVal;
@@ -298,13 +313,15 @@ const STRATEGY_REGISTRY = {
   supertrend: {
     id: 'supertrend',
     name: 'Supertrend',
+    tabName: 'Supertrend',
     icon: '🔱',
+    svg: `<svg class="strat-tab-svg" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M5 5v5a7 7 0 0 0 14 0V5M8 19h8"/></svg>`,
     color: '#22c55e',
     desc: 'ATR-based trailing band — flip direction khi giá phá vỡ band',
     defaultParams: { stAtrPeriod: 10, stMultiplier: 3 },
     run(candles, params) {
       const { slMode, slValue, atrPeriod, rrRatio, capital, sizeType, sizeValue,
-              feeRate, maxHoldBars, pattern: filterPattern,
+              feeRate, maxHoldBars, trailingStop, pattern: filterPattern,
               stAtrPeriod = 10, stMultiplier = 3 } = params;
       const stData = calcSupertrend(candles, stAtrPeriod, stMultiplier);
       const atrArr = slMode === 'atr' ? calcATR(candles, atrPeriod) : null;
@@ -315,7 +332,7 @@ const STRATEGY_REGISTRY = {
           || (sig.type === 'bull' ? 'bullHammer' : 'shootingStar');
         if (filterPattern && filterPattern !== 'all' && pattern !== filterPattern) return;
         const sigIdx = Math.min(sig.index + 1, candles.length - 1);
-        const trade  = simulateTrade(candles, sigIdx, sig.type, slMode, slValue, atrArr, rrRatio, cap, sizeType, sizeValue, feeRate, maxHoldBars);
+        const trade  = simulateTrade(candles, sigIdx, sig.type, slMode, slValue, atrArr, rrRatio, cap, sizeType, sizeValue, feeRate, maxHoldBars, trailingStop);
         if (!trade) return;
         trade.pattern = pattern;
         trade.stVal   = sig.stVal;
@@ -329,13 +346,15 @@ const STRATEGY_REGISTRY = {
   donchian_breakout: {
     id: 'donchian_breakout',
     name: 'Donchian Breakout',
+    tabName: 'Donchian',
     icon: '📦',
+    svg: `<svg class="strat-tab-svg" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="10" x="3" y="7" rx="2" stroke-dasharray="3 3"/><path d="m15 12 3-3-3-3"/><path d="M18 9H8"/></svg>`,
     color: '#f59e0b',
     desc: 'Giá đóng cửa phá vỡ N-bar high/low → follow the trend (ngược False Breakout)',
     defaultParams: { dcLookback: 20, dcClosePct: 0.1 },
     run(candles, params) {
       const { slMode, slValue, atrPeriod, rrRatio, capital, sizeType, sizeValue,
-              feeRate, maxHoldBars, pattern: filterPattern,
+              feeRate, maxHoldBars, trailingStop, pattern: filterPattern,
               dcLookback = 20, dcClosePct = 0.1 } = params;
       const swings = calcSwingLevels(candles, dcLookback);
       const atrArr = slMode === 'atr' ? calcATR(candles, atrPeriod) : null;
@@ -346,7 +365,7 @@ const STRATEGY_REGISTRY = {
           || (sig.type === 'bull' ? 'marubozuBull' : 'marubozuBear');
         if (filterPattern && filterPattern !== 'all' && pattern !== filterPattern) return;
         const sigIdx = Math.min(sig.index + 1, candles.length - 1);
-        const trade  = simulateTrade(candles, sigIdx, sig.type, slMode, slValue, atrArr, rrRatio, cap, sizeType, sizeValue, feeRate, maxHoldBars);
+        const trade  = simulateTrade(candles, sigIdx, sig.type, slMode, slValue, atrArr, rrRatio, cap, sizeType, sizeValue, feeRate, maxHoldBars, trailingStop);
         if (!trade) return;
         trade.pattern  = pattern;
         trade.levelRef = sig.levelRef;
@@ -361,7 +380,9 @@ const STRATEGY_REGISTRY = {
   turtle_trading: {
     id: 'turtle_trading',
     name: 'Turtle Trading',
+    tabName: 'Turtle',
     icon: '🐢',
+    svg: `<svg class="strat-tab-svg" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M12 8v8M8 12h8"/></svg>`,
     color: '#6366f1',
     desc: 'Richard Dennis 1983 — Dual Donchian channel breakout + 2×ATR stop + Win Filter',
     defaultParams: {
@@ -374,7 +395,7 @@ const STRATEGY_REGISTRY = {
     },
     run(candles, params) {
       const {
-        capital, sizeType, sizeValue, feeRate, maxHoldBars,
+        capital, sizeType, sizeValue, feeRate, maxHoldBars, trailingStop,
         ttSystem = 'S1',
         ttEntry:    rawEntry = 20,
         ttExit:     rawExit  = 10,
@@ -430,7 +451,7 @@ const STRATEGY_REGISTRY = {
 
         const trade = simulateTurtleTrade(
           candles, sigIdx, sigType, stopDist, exitCh,
-          cap, sizeType, sizeValue, feeRate, maxHoldBars
+          cap, sizeType, sizeValue, feeRate, maxHoldBars, trailingStop
         );
         if (!trade) { i++; continue; }
 
@@ -449,6 +470,47 @@ const STRATEGY_REGISTRY = {
       }
 
       return trades;
+    }
+  },
+
+  combo_strategy: {
+    id: 'combo_strategy',
+    name: 'Combo Strategy',
+    tabName: 'Combo',
+    groupDivider: 'Portfolio Blend',
+    icon: '🧩',
+    svg: `<svg class="strat-tab-svg" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
+    color: '#ec4899',
+    desc: 'Hợp nhất và phân bổ vốn đều cho nhiều hệ thống chạy độc lập',
+    defaultParams: { comboStrategies: [] },
+    run(candles, params) {
+      const selectedIds = params.comboStrategies || [];
+      if (!selectedIds.length) return [];
+
+      const subCapital = params.capital / selectedIds.length;
+      let allTrades = [];
+
+      selectedIds.forEach(stratId => {
+        const stratInfo = STRATEGY_REGISTRY[stratId];
+        if (!stratInfo || stratId === 'combo_strategy') return;
+
+        const subParams = {
+          ...params,
+          ...getStrategyParams(stratId),
+          capital: subCapital,
+          strategy: stratId
+        };
+
+        const trades = stratInfo.run(candles, subParams);
+        trades.forEach(t => {
+          t.strategyId = stratId;
+          t.pattern = `${stratInfo.icon} ${t.pattern || 'Signal'}`;
+        });
+        allTrades.push(...trades);
+      });
+
+      allTrades.sort((a, b) => a.entryTime - b.entryTime);
+      return allTrades;
     }
   },
 };
@@ -1263,12 +1325,13 @@ function scanDonchianBreakouts(candles, swings, closePct = 0.001) {
  * @param {number}   feeRate     - 0–1 (0.001 = 0.1%)
  * @param {number}   maxHoldBars - timeout
  */
-function simulateTurtleTrade(candles, sigIdx, type, stopDist, exitCh, capital, sizeType, sizeValue, feeRate, maxHoldBars) {
+function simulateTurtleTrade(candles, sigIdx, type, stopDist, exitCh, capital, sizeType, sizeValue, feeRate, maxHoldBars, trailingStop) {
   const entry = candles[sigIdx]?.close;
   if (!entry || stopDist <= 0) return null;
 
   const isBuy   = type === 'bull';
   const sl      = isBuy ? entry - stopDist : entry + stopDist;
+  let activeSL  = sl;
   const fee     = feeRate || 0;
   const maxBars = maxHoldBars || 300;
 
@@ -1289,7 +1352,7 @@ function simulateTurtleTrade(candles, sigIdx, type, stopDist, exitCh, capital, s
     const exitLow  = exitCh.swingLow[i];
     const exitHigh = exitCh.swingHigh[i];
 
-    const hitSL = isBuy ? c.low <= sl : c.high >= sl;
+    const hitSL = isBuy ? c.low <= activeSL : c.high >= activeSL;
     const hitExit = isBuy
       ? (exitLow  != null && c.low  <= exitLow)
       : (exitHigh != null && c.high >= exitHigh);
@@ -1298,9 +1361,9 @@ function simulateTurtleTrade(candles, sigIdx, type, stopDist, exitCh, capital, s
       // SL price vs channel exit price — take worse for slippage realism
       let exitPx;
       if (hitSL && hitExit) {
-        exitPx = isBuy ? Math.min(sl, exitLow ?? sl) : Math.max(sl, exitHigh ?? sl);
+        exitPx = isBuy ? Math.min(activeSL, exitLow ?? activeSL) : Math.max(activeSL, exitHigh ?? activeSL);
       } else {
-        exitPx = hitSL ? sl : (isBuy ? exitLow : exitHigh);
+        exitPx = hitSL ? activeSL : (isBuy ? exitLow : exitHigh);
       }
       const gross   = isBuy ? (exitPx - entry) * posSize : (entry - exitPx) * posSize;
       const feeCost = posValue * fee;
@@ -1315,8 +1378,14 @@ function simulateTurtleTrade(candles, sigIdx, type, stopDist, exitCh, capital, s
         holdBars: i - sigIdx,
         entry, sl, tp: null, exitPrice: exitPx,
         posSize, posValue, feeCost: +feeCost.toFixed(2),
-        exitReason: hitSL && !hitExit ? 'SL' : 'EXIT_CHANNEL',
+        trailingStop: !!trailingStop, trailSL: +activeSL.toFixed(6),
+        exitReason: hitSL && !hitExit ? (trailingStop && activeSL !== sl ? 'TRAILING_STOP' : 'SL') : 'EXIT_CHANNEL',
       };
+    }
+
+    if (trailingStop) {
+      const nextSL = isBuy ? c.high - stopDist : c.low + stopDist;
+      activeSL = isBuy ? Math.max(activeSL, nextSL) : Math.min(activeSL, nextSL);
     }
   }
 
@@ -1335,6 +1404,7 @@ function simulateTurtleTrade(candles, sigIdx, type, stopDist, exitCh, capital, s
     holdBars: Math.min(sigIdx + maxBars, candles.length - 1) - sigIdx,
     entry, sl, tp: null, exitPrice: last.close,
     posSize, posValue, feeCost: +feeCost.toFixed(2),
+    trailingStop: !!trailingStop, trailSL: +activeSL.toFixed(6),
     exitReason: 'TIMEOUT',
   };
 }
@@ -1629,7 +1699,7 @@ function onATRParamChange() {
 // ============================================
 // SIMULATE TRADE (With Position Sizing Models)
 // ============================================
-function simulateTrade(candles, sigIdx, crossType, slMode, slValue, atrArr, rrRatio, capital, sizeType, sizeValue, feeRate, maxHoldBars) {
+function simulateTrade(candles, sigIdx, crossType, slMode, slValue, atrArr, rrRatio, capital, sizeType, sizeValue, feeRate, maxHoldBars, trailingStop) {
   const entry = candles[sigIdx]?.close; if (!entry) return null;
   const isBuy = crossType === 'bull';
   const maxBars = maxHoldBars || 80;
@@ -1646,6 +1716,7 @@ function simulateTrade(candles, sigIdx, crossType, slMode, slValue, atrArr, rrRa
 
   const sl       = isBuy ? entry - slDist : entry + slDist;
   const tp       = isBuy ? entry + slDist * rrRatio : entry - slDist * rrRatio;
+  let activeSL   = sl;
   
   let posSize = 0;
   if (sizeType === 'percent') {
@@ -1665,11 +1736,11 @@ function simulateTrade(candles, sigIdx, crossType, slMode, slValue, atrArr, rrRa
 
   for (let i = sigIdx + 1; i < Math.min(sigIdx + maxBars, candles.length); i++) {
     const c = candles[i];
-    const hitSL = isBuy ? c.low <= sl  : c.high >= sl;
+    const hitSL = isBuy ? c.low <= activeSL  : c.high >= activeSL;
     const hitTP = isBuy ? c.high >= tp : c.low  <= tp;
     if (hitSL || hitTP) {
       const result  = hitTP && !hitSL ? 'WIN' : 'LOSS';
-      const exitPx  = result === 'WIN' ? tp : sl;
+      const exitPx  = result === 'WIN' ? tp : activeSL;
       const grossPnl = isBuy ? (exitPx - entry) * posSize : (entry - exitPx) * posSize;
       const feeCost  = posValue * fee;  // round-trip fee
       const pnl      = grossPnl - feeCost;
@@ -1680,7 +1751,14 @@ function simulateTrade(candles, sigIdx, crossType, slMode, slValue, atrArr, rrRa
         result: pnl >= 0 ? 'WIN' : 'LOSS',
         pnl: +pnl.toFixed(2), pnlPct: +((pnl/posValue)*100).toFixed(2),
         holdBars, slDist, slMode, posSize, posValue, feeCost: +feeCost.toFixed(2),
+        trailingStop: !!trailingStop, trailSL: +activeSL.toFixed(6),
+        exitReason: result === 'WIN' ? 'TP' : (trailingStop && activeSL !== sl ? 'TRAILING_STOP' : 'SL'),
       };
+    }
+
+    if (trailingStop) {
+      const nextSL = isBuy ? c.high - slDist : c.low + slDist;
+      activeSL = isBuy ? Math.max(activeSL, nextSL) : Math.min(activeSL, nextSL);
     }
   }
   const last      = candles[Math.min(sigIdx + maxBars, candles.length - 1)];
@@ -1693,6 +1771,7 @@ function simulateTrade(candles, sigIdx, crossType, slMode, slValue, atrArr, rrRa
     type: isBuy ? 'BUY' : 'SELL', entry, sl, tp, exitPrice: last.close,
     result: pnl >= 0 ? 'WIN' : 'LOSS', pnl: +pnl.toFixed(2), pnlPct: +((pnl/posValue)*100).toFixed(2),
     holdBars, slDist, slMode, posSize, posValue, feeCost: +feeCost.toFixed(2),
+    trailingStop: !!trailingStop, trailSL: +activeSL.toFixed(6), exitReason: 'TIMEOUT',
   };
 }
 
@@ -1728,6 +1807,7 @@ function calcMetrics(trades, capital, startTimeMs, endTimeMs) {
 
   const avgHold = trades.reduce((s, t) => s + (t.holdBars || 0), 0) / trades.length;
   const totalPnL = trades.reduce((s,t) => s + t.pnl, 0);
+  const totalReturnPct = capital > 0 ? (totalPnL / capital) * 100 : 0;
   const pf = tL > 0 ? tW / tL : tW > 0 ? 999 : 0;
   const expectancy = (wins.length/trades.length * (tW/(wins.length||1))) - (losses.length/trades.length * (tL/(losses.length||1)));
 
@@ -1772,7 +1852,7 @@ function calcMetrics(trades, capital, startTimeMs, endTimeMs) {
   return {
     total: trades.length, wins: wins.length, losses: losses.length,
     winRate: wins.length / trades.length * 100,
-    profitFactor: pf, totalPnL,
+    profitFactor: pf, totalPnL, totalReturnPct,
     finalCapital: equity, maxDrawdown: maxDD,
     avgWin: wins.length ? tW / wins.length : 0,
     avgLoss: losses.length ? tL / losses.length : 0,
@@ -2197,6 +2277,7 @@ function renderTradeTable(trades) {
     const slTag = t.slMode === 'atr' ? `ATR×${(t.slDist/1).toFixed?.(0)}` : `${(t.slDist/t.entry*100).toFixed(1)}%`;
     const holdStr = fmtHoldBars(t.holdBars, curInterval);
     const feeStr  = t.feeCost > 0 ? ` <span style="color:var(--text-muted);font-size:10px">(-$${t.feeCost.toFixed(2)} fee)</span>` : '';
+    const exitReason = t.exitReason === 'TRAILING_STOP' ? 'Trail' : t.exitReason || '';
     row.innerHTML = `
       <td style="color:var(--text-muted)">${i+1}</td>
       ${t.symbol ? `<td class="col-symbol" style="color:var(--accent);font-weight:600;display:${showSymbol?'table-cell':'none'}">${t.symbol.replace('USDT','')}</td>` : ''}
@@ -2205,7 +2286,7 @@ function renderTradeTable(trades) {
       <td style="font-family:var(--font-mono)">$${Math.round(t.posValue || 0).toLocaleString()}</td>
       <td style="color:var(--text-dim)">${PATTERN_NAMES[t.pattern]||'—'}</td>
       <td>${fmtP(t.entry)}</td><td style="color:var(--red)">${fmtP(t.sl)}</td>
-      <td style="color:var(--green)">${fmtP(t.tp)}</td><td>${fmtP(t.exitPrice)}</td>
+      <td style="color:var(--green)">${fmtP(t.tp)}</td><td>${fmtP(t.exitPrice)}${exitReason ? ` <span style="color:var(--text-muted);font-size:10px">(${exitReason})</span>` : ''}</td>
       <td style="color:var(--text-muted);font-size:10px">${slTag}</td>
       <td style="font-size:11px;white-space:nowrap">${holdStr}</td>
       <td><span class="badge ${t.result==='WIN'?'badge-win':'badge-loss'}">${t.result}</span></td>
@@ -2251,6 +2332,7 @@ async function refreshDataManager() {
   const container = document.getElementById('cacheList');
   const emptyEl   = document.getElementById('cacheEmpty');
   const totalEl   = document.getElementById('cacheTotalSize');
+  if (!container || !emptyEl || !totalEl) return;
   try {
     const list = await fetchMeta();
     if (!list.length) {
@@ -2438,6 +2520,7 @@ const METRIC_TIPS = {
   statWinRate:    '% lệnh thắng.\n> 50% = tốt\nLưu ý: win rate cao chưa chắc lãi nếu avg loss lớn hơn avg win.',
   statPF:         'Profit Factor = Tổng lãi / Tổng lỗ.\n> 1.5 = tốt · > 2.0 = xuất sắc\n"∞" = không có lệnh thua.',
   statPnL:        'Tổng lợi nhuận sau phí (nếu có cài đặt phí giao dịch).',
+  statReturnPct:  'Tổng lợi nhuận tính theo phần trăm trên vốn ban đầu.',
   statFinal:      'Vốn cuối kỳ sau khi cộng tất cả lãi/lỗ.',
   statDD:         'Max Drawdown: mức giảm vốn lớn nhất từ đỉnh.\n< 15% = an toàn · < 30% = chấp nhận được\n> 50% = nguy hiểm cho tâm lý.',
   statCAGR:       'CAGR = Compound Annual Growth Rate.\nTỷ lệ tăng trưởng vốn trung bình mỗi năm (đã gộp lãi).',
@@ -2479,6 +2562,9 @@ function renderStats(m, capital) {
   set('statPF', m.profitFactor === 999 ? '∞' : m.profitFactor.toFixed(2), v => v === '∞' || parseFloat(v) >= 1 ? 'var(--green)' : 'var(--red)');
   set('statPnL', fmtMoney(m.totalPnL));
   document.getElementById('statPnL').className = 'stat-value ' + (m.totalPnL >= 0 ? 'green' : 'red');
+  const returnPct = Number.isFinite(m.totalReturnPct) ? m.totalReturnPct : ((m.totalPnL || 0) / capital * 100);
+  set('statReturnPct', `${returnPct >= 0 ? '+' : ''}${returnPct.toFixed(2)}%`);
+  document.getElementById('statReturnPct').className = 'stat-value ' + (returnPct >= 0 ? 'green' : 'red');
   set('statFinal', '$' + Math.round(m.finalCapital).toLocaleString());
   document.getElementById('statFinal').style.color = m.finalCapital >= capital ? 'var(--green)' : 'var(--red)';
   set('statDD', `-${m.maxDrawdown.toFixed(1)}%`);
@@ -2575,13 +2661,20 @@ async function runBacktest() {
   // Fee & Max Hold params
   const feeRate   = parseFloat(document.getElementById('btFeeRate')?.value || 0) / 100; // convert % to decimal
   const maxHoldBars = parseInt(document.getElementById('btMaxHold')?.value || 80);
+  const trailingStop = !!document.getElementById('btTrailingStop')?.checked;
 
   // Strategy selection
   const strategyId     = getActiveStrategy();
   const strategyExtra  = getStrategyParams(strategyId);
 
+  if (strategyId === 'combo_strategy' && (!strategyExtra.comboStrategies || strategyExtra.comboStrategies.length === 0)) {
+    showToast('⚠️ Vui lòng chọn ít nhất một chiến lược để kết hợp');
+    BT.loading = false;
+    return;
+  }
+
   const params = { slMode, slValue, atrPeriod, rrRatio, capital, sizeType, sizeValue,
-                   pattern: selectedPattern, feeRate, maxHoldBars,
+                   pattern: selectedPattern, feeRate, maxHoldBars, trailingStop,
                    strategy: strategyId, ...strategyExtra };
 
   // Determine list of symbols to test
@@ -2778,6 +2871,8 @@ async function runBacktest() {
     document.getElementById('statsBar').style.display = 'block';
     document.getElementById('btMain').style.display   = 'flex';
     document.getElementById('btEmpty').style.display  = 'none';
+    document.getElementById('resultTabs').style.display = 'flex';
+    switchResultTab(document.getElementById('btMain')?.dataset.activeTab || 'overview');
 
     renderStats(m, capital);
     updateRunBadges();
@@ -2825,6 +2920,15 @@ function updateRunBadges() {
     </div>`;
   }).join('');
   container.style.display = BT.runs.length >= 2 ? 'flex' : 'none';
+}
+
+function switchResultTab(tab, btn) {
+  const main = document.getElementById('btMain');
+  if (!main) return;
+  main.dataset.activeTab = tab;
+  document.querySelectorAll('.result-tab').forEach(el => {
+    el.classList.toggle('active', el === btn || el.dataset.resultTab === tab);
+  });
 }
 
 // Switch active run (xem kết quả của run khác)
@@ -2925,7 +3029,10 @@ function renderStrategyComparison() {
 
   section.innerHTML = `
     <div class="bt-section-header">
-      <h2 class="bt-section-title">⚡ So Sánh Chiến Lược</h2>
+      <h2 class="bt-section-title">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="section-icon"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        So Sánh Chiến Lược
+      </h2>
       <span style="font-size:11px;color:var(--text-muted)">${runs.length} chiến lược · ${runs[0]?.symbol || ''} · ${runs[0]?.interval || ''}</span>
     </div>
     ${equityCanvasNote}
@@ -2950,9 +3057,12 @@ function renderStrategyComparison() {
 function renderMultiStrategyEquity() {
   const canvas = document.getElementById('equityCanvas');
   if (!canvas || !BT.runs.length) return;
-  const ctx = canvas.getContext('2d');
-  const W = canvas.width, H = canvas.height;
-  const PAD = { t: 30, r: 90, b: 40, l: 70 };
+  const dpr = window.devicePixelRatio || 1;
+  const W = canvas.parentElement.offsetWidth - 32, H = 260;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+  const ctx = canvas.getContext('2d'); ctx.scale(dpr, dpr);
+  const PAD = { t: 24, r: 100, b: 40, l: 82 };
 
   ctx.clearRect(0, 0, W, H);
 
@@ -3063,7 +3173,151 @@ function selectTurtleSystem(system) {
   }
 }
 
+function renderStrategySelectors() {
+  const desktopContainer = document.getElementById('stratTabsDesktop');
+  const mobileSelect = document.getElementById('stratMobileSelect');
+  const comboStratsGrid = document.getElementById('comboStratsGrid');
+  const descEl = document.getElementById('stratTabDesc');
+
+  if (!desktopContainer || !mobileSelect) return;
+
+  // Clear existing items
+  desktopContainer.innerHTML = '';
+  mobileSelect.innerHTML = '';
+  if (comboStratsGrid) comboStratsGrid.innerHTML = '';
+
+  // Setup the three main strategy category groups
+  const groups = [
+    {
+      id: 'reversion',
+      title: 'Mean Reversion',
+      icon: '🔄',
+      color: '#00f5a0',
+      strategies: []
+    },
+    {
+      id: 'trend',
+      title: 'Trend Following',
+      icon: '📈',
+      color: '#06b6d4',
+      strategies: []
+    },
+    {
+      id: 'blend',
+      title: 'Portfolio Blend',
+      icon: '🧩',
+      color: '#ec4899',
+      strategies: []
+    }
+  ];
+
+  // Distribute strategies to their groups based on definition
+  Object.values(STRATEGY_REGISTRY).forEach(strat => {
+    // 1. Group assignment
+    if (strat.id === 'combo_strategy') {
+      groups[2].strategies.push(strat);
+    } else if (strat.id === 'macd_crossover' || strat.id === 'supertrend' || strat.id === 'donchian_breakout' || strat.id === 'turtle_trading') {
+      groups[1].strategies.push(strat);
+    } else {
+      groups[0].strategies.push(strat);
+    }
+
+    // 2. Render Mobile Option
+    const option = document.createElement('option');
+    option.value = strat.id;
+    option.textContent = `${strat.icon} ${strat.name}`;
+    mobileSelect.appendChild(option);
+
+    // 3. Render Combo Strategy Checkbox (exclude combo_strategy itself)
+    if (comboStratsGrid && strat.id !== 'combo_strategy') {
+      const label = document.createElement('label');
+      label.className = 'combo-strat-label';
+      label.title = strat.desc;
+
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.className = 'combo-strat-checkbox';
+      checkbox.value = strat.id;
+      if (strat.id === 'ema_crossover' || strat.id === 'rsi_reversal') {
+        checkbox.checked = true;
+      }
+      checkbox.onchange = () => {
+        if (getActiveStrategy() === 'combo_strategy') {
+          updateComboSubPanels();
+        }
+      };
+
+      const customSpan = document.createElement('span');
+      customSpan.className = 'combo-strat-custom';
+      customSpan.textContent = `${strat.icon} ${strat.name}`;
+
+      label.appendChild(checkbox);
+      label.appendChild(customSpan);
+      comboStratsGrid.appendChild(label);
+    }
+  });
+
+  // Render the groups into the Desktop Container
+  const gridContainer = document.createElement('div');
+  gridContainer.className = 'strat-groups-grid';
+
+  groups.forEach(g => {
+    if (g.strategies.length === 0) return;
+
+    const groupCard = document.createElement('div');
+    groupCard.className = `strat-group-card group-${g.id}`;
+    groupCard.style.setProperty('--group-color', g.color);
+
+    const header = document.createElement('div');
+    header.className = 'strat-group-header';
+    header.innerHTML = `
+      <span class="strat-group-icon" style="color: ${g.color}">${g.icon}</span>
+      <span class="strat-group-title" style="color: ${g.color}e0">${g.title}</span>
+      <span class="strat-group-badge" style="background: ${g.color}18; color: ${g.color}">${g.strategies.length}</span>
+    `;
+    groupCard.appendChild(header);
+
+    const list = document.createElement('div');
+    list.className = 'strat-group-list';
+
+    g.strategies.forEach(strat => {
+      const tabBtn = document.createElement('button');
+      tabBtn.className = 'strat-tab';
+      tabBtn.setAttribute('data-strategy-id', strat.id);
+      tabBtn.onclick = () => switchStrategy(strat.id, tabBtn);
+
+      const iconSpan = document.createElement('span');
+      iconSpan.className = 'strat-tab-icon';
+      iconSpan.innerHTML = strat.svg || strat.icon;
+      tabBtn.appendChild(iconSpan);
+
+      const nameSpan = document.createElement('span');
+      nameSpan.className = 'strat-tab-name';
+      nameSpan.textContent = strat.tabName || strat.name;
+      tabBtn.appendChild(nameSpan);
+
+      list.appendChild(tabBtn);
+    });
+
+    groupCard.appendChild(list);
+    gridContainer.appendChild(groupCard);
+  });
+
+  desktopContainer.appendChild(gridContainer);
+
+  // Re-append description element to desktop container
+  if (descEl) {
+    desktopContainer.appendChild(descEl);
+  }
+}
+
 function switchStrategy(strategyId, tabEl) {
+  // Synchronize mobile select value if it exists
+  const mobSelect = document.getElementById('stratMobileSelect');
+  if (mobSelect) {
+    mobSelect.value = strategyId;
+  }
+
   // Update active tab
   document.querySelectorAll('.strat-tab').forEach(t => t.classList.remove('active'));
   if (tabEl) tabEl.classList.add('active');
@@ -3074,9 +3328,24 @@ function switchStrategy(strategyId, tabEl) {
   if (descEl) descEl.textContent = desc;
 
   // Toggle param panels
+  const paramsBar = document.getElementById('stratParamsBar');
   document.querySelectorAll('.strat-params-panel').forEach(p => p.classList.remove('active'));
-  const panel = document.getElementById(`params-${strategyId}`);
-  if (panel) panel.classList.add('active');
+
+  if (strategyId === 'combo_strategy') {
+    if (paramsBar) paramsBar.classList.add('combo-active-mode');
+    
+    // Show the main combo strategy panel
+    const comboPanel = document.getElementById('params-combo_strategy');
+    if (comboPanel) comboPanel.classList.add('active');
+
+    // Show panels for all checked strategies
+    updateComboSubPanels();
+  } else {
+    if (paramsBar) paramsBar.classList.remove('combo-active-mode');
+    
+    const panel = document.getElementById(`params-${strategyId}`);
+    if (panel) panel.classList.add('active');
+  }
 
   // Update strategy-specific active color on tab bar
   const tabBar = document.getElementById('stratTabBar');
@@ -3095,7 +3364,7 @@ function switchStrategy(strategyId, tabEl) {
     ema_crossover: 'legEMA', rsi_reversal: 'legRSI', bb_bounce: 'legBB',
     false_breakout: 'legFB', macd_crossover: 'legMACD',
     supertrend: 'legST', donchian_breakout: 'legDC',
-    turtle_trading: 'legTT',
+    turtle_trading: 'legTT', combo_strategy: 'legCombo',
   };
   Object.values(legends).forEach(id => {
     const el = document.getElementById(id);
@@ -3103,6 +3372,25 @@ function switchStrategy(strategyId, tabEl) {
   });
   const activeLeg = document.getElementById(legends[strategyId]);
   if (activeLeg) activeLeg.style.display = '';
+}
+
+function updateComboSubPanels() {
+  document.querySelectorAll('.combo-strat-checkbox').forEach(cb => {
+    const stratId = cb.value;
+    const subPanel = document.getElementById(`params-${stratId}`);
+    if (!subPanel) return;
+
+    if (cb.checked) {
+      subPanel.classList.add('active');
+      const stratInfo = STRATEGY_REGISTRY[stratId];
+      if (stratInfo) {
+        subPanel.setAttribute('data-combo-title', `⚙️ Parameter Setup: ${stratInfo.name}`);
+        subPanel.style.setProperty('--active-strat-color', stratInfo.color);
+      }
+    } else {
+      subPanel.classList.remove('active');
+    }
+  });
 }
 
 // ============================================
@@ -3152,7 +3440,10 @@ function renderBHComparison(stratMetrics, bh, capital) {
   if (!bh) {
     section.innerHTML = `
       <div class="bt-section-header">
-        <h2 class="bt-section-title">💰 So Sánh: Chiến Lược vs Buy &amp; Hold</h2>
+        <h2 class="bt-section-title">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="section-icon"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          So Sánh: Chiến Lược vs Buy &amp; Hold
+        </h2>
       </div>
       <div style="padding:20px;color:var(--text-muted);font-family:var(--font-mono);font-size:12px">
         Không có dữ liệu B&H — chạy backtest để tải
@@ -3226,7 +3517,10 @@ function renderBHComparison(stratMetrics, bh, capital) {
 
   section.innerHTML = `
     <div class="bt-section-header">
-      <h2 class="bt-section-title">💰 So Sánh: Chiến Lược vs Buy &amp; Hold</h2>
+      <h2 class="bt-section-title">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="section-icon"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        So Sánh: Chiến Lược vs Buy &amp; Hold
+      </h2>
       <span style="font-size:11px;color:var(--text-muted);font-family:var(--font-mono)">
         Mua ${bh.startDate} @ $${bh.buyPrice.toLocaleString(undefined,{maximumFractionDigits:2})} → bán ${bh.endDate} @ $${bh.sellPrice.toLocaleString(undefined,{maximumFractionDigits:2})}
       </span>
@@ -3273,6 +3567,8 @@ async function clearAllCacheConfirmed() {
 }
 
 window.addEventListener('DOMContentLoaded', () => {
+  renderStrategySelectors();
+
   initSymbolSearch();
   initPortfolioChips();
   refreshDataManager();
@@ -3294,4 +3590,21 @@ window.addEventListener('DOMContentLoaded', () => {
   // Default SL mode = fixed
   toggleSLMode('fixed');
   toggleMode('single');
+
+  // Set initial strategy
+  const firstTab = document.querySelector('.strat-tab[data-strategy-id="ema_crossover"]');
+  if (firstTab) {
+    switchStrategy('ema_crossover', firstTab);
+  }
 });
+
+function toggleSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  if (sidebar) sidebar.classList.toggle('active');
+}
+
+function toggleSidebarCollapsed() {
+  const layout = document.querySelector('.app-layout');
+  if (!layout) return;
+  layout.classList.toggle('sidebar-collapsed');
+}
